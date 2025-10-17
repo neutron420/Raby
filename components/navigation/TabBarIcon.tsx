@@ -1,4 +1,4 @@
-
+// components/navigation/TabBarIcon.tsx
 import { Ionicons } from '@expo/vector-icons';
 import { type IconProps } from '@expo/vector-icons/build/createIconSet';
 import { type ComponentProps } from 'react';

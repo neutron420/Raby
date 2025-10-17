@@ -1,25 +1,20 @@
-import React, { useEffect, useState } from 'react';
 import { Stack, useRouter } from 'expo-router';
-import SplashScreen from './screens/splashscreen'; // <-- Updated import path
+import * as SplashScreen from 'expo-splash-screen';
+import { useEffect } from 'react';
+import 'react-native-reanimated';
+SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
-  const [isReady, setReady] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
-    // Show the splash screen for 3 seconds
-    const timer = setTimeout(() => {
-      setReady(true);
-      router.replace('/(tabs)/index'); // Navigate to the tab layout
-    }, 3000);
-
-    return () => clearTimeout(timer); // Clean up the timer
-  }, [router]);
-
-  if (!isReady) {
-    return <SplashScreen />;
-  }
-
+    const timer = setTimeout(async () => {
+      await SplashScreen.hideAsync();
+    
+      router.replace('/(tabs)');
+    }, 4000); 
+    return () => clearTimeout(timer);
+  }, []);
   return (
     <Stack>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
