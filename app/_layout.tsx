@@ -1,22 +1,13 @@
-import { Stack, useRouter } from 'expo-router';
-import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
+import { Stack } from 'expo-router';
 import 'react-native-reanimated';
-SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
-  const router = useRouter();
-
-  useEffect(() => {
-    const timer = setTimeout(async () => {
-      await SplashScreen.hideAsync();
-    
-      router.replace('/(tabs)');
-    }, 4000); 
-    return () => clearTimeout(timer);
-  }, []);
   return (
     <Stack>
+      {/* The first screen is your custom splash screen. The header is hidden. */}
+      <Stack.Screen name="splash" options={{ headerShown: false }} />
+
+      {/* This is the main part of your app with the tabs. */}
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
     </Stack>
   );
