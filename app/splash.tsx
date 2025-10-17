@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { StyleSheet, Image } from 'react-native'; // Removed Platform as it wasn't used
+import { StyleSheet, Image } from 'react-native';
 import Animated, { useSharedValue, withTiming, Easing } from 'react-native-reanimated';
 import { ThemedText } from '@/components/themed-text';
 import { useRouter } from 'expo-router';
@@ -22,24 +22,23 @@ export default function CustomSplashScreen() {
       router.replace('/(tabs)');
     }, 4000);
 
-    return () => clearTimeout(timer); // Cleanup
+    return () => clearTimeout(timer);
   }, []);
 
   return (
     <LinearGradient
-      // Darker, vibrant purple gradient for excellent contrast
-      colors={['#4B0082', '#6A0DAD', '#8A2BE2']} // Indigo, DarkOrchid, BlueViolet - these are strong purples
-      start={{ x: 0, y: 0 }} // Start gradient from top-left
-      end={{ x: 1, y: 1 }}   // End gradient at bottom-right
+      // Subtle dark gradient — deep black fading into soft charcoal gray
+      colors={['#0A0A0A', '#1A1A1A', '#2A2A2A']} 
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
       style={styles.container}
     >
       <AnimatedImage
-
-        source={require('@/assets/images/splash-icon.png')}
+        source={require('@/assets/images/logo-wallet-splash.png')}
         style={[styles.logo, { transform: [{ scale }], opacity }]}
       />
       <Animated.View style={{ opacity }}>
-        <ThemedText type="title" style={styles.title}>Raby</ThemedText>
+        <ThemedText type="title" style={styles.title}></ThemedText>
       </Animated.View>
     </LinearGradient>
   );
@@ -49,22 +48,21 @@ const styles = StyleSheet.create({
   container: { 
     flex: 1, 
     justifyContent: 'center', 
-    alignItems: 'center' 
+    alignItems: 'center',
   },
   logo: { 
-    width: 220, // Slightly adjusted logo size
-    height: 220, 
+    width: 220,
+    height: 220,
     resizeMode: 'contain',
-    marginBottom: 25, // More space below the logo
+    marginBottom: 25,
   },
   title: { 
     marginTop: 0, 
-    fontSize: 58, // Even larger font size
+    fontSize: 58,
     fontWeight: 'bold',
-    color: '#FFFFFF', // <<< THIS IS THE KEY FIX: Force white color
-    textShadowColor: 'rgba(0, 0, 0, 0.5)', // Stronger, more visible shadow
+    color: '#FFFFFF',
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
     textShadowOffset: { width: 0, height: 4 },
-    textShadowRadius: 10, // Increased shadow radius
-    // If you have a custom font, you can add it here too, e.g., fontFamily: 'SpaceMono-Regular',
+    textShadowRadius: 10,
   },
 });
