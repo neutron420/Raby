@@ -17,7 +17,6 @@ export default function CustomSplashScreen() {
     scale.value = withTiming(1, { duration: 1000, easing: Easing.out(Easing.exp) });
     opacity.value = withTiming(1, { duration: 1200, easing: Easing.out(Easing.exp) });
 
-    // Navigate to the main app after 4 seconds
     const timer = setTimeout(() => {
       router.replace('/(tabs)');
     }, 4000);
