@@ -17,7 +17,7 @@ export default function WalletSetupScreen() {
 
   const handleImportWallet = () => {
      // Navigate to the import screen
-    router.push('/import-wallet');
+    router.push('/import-option');
   };
 
   // Define colors - forcing dark theme appearance
