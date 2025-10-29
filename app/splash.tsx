@@ -18,11 +18,11 @@ export default function CustomSplashScreen() {
     opacity.value = withTiming(1, { duration: 1200, easing: Easing.out(Easing.exp) });
 
     const timer = setTimeout(() => {
-      router.replace('/(tabs)');
+      router.replace('/wallet-setup');
     }, 4000);
 
     return () => clearTimeout(timer);
-  }, []);
+  }, [opacity, router, scale]);
 
   return (
     <LinearGradient
