@@ -1,5 +1,5 @@
 // app/create-wallet.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
     StyleSheet, View, TouchableOpacity, ScrollView, Alert, TextInput, ActivityIndicator, Switch
 } from 'react-native';

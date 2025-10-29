@@ -1,0 +1,167 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL") // Make sure this is set in your .env file
+}
+
+// Global user settings and preferences (could potentially be linked to an auth system)
+model User {
+  id                      String    @id @default(uuid()) // Unique user ID from your auth system or generated
+  hasWalletConfigured     Boolean   @default(false)
+  biometricsEnabled       Boolean   @default(false)
+  preferredCurrency     String    @default("USD")
+  themePreference         String    @default("system") // 'system', 'light', 'dark'
+  defaultGasLevel         String    @default("medium") // 'slow', 'medium', 'fast'
+  lastBackupTimestamp     DateTime? // Optional: Track server-side encrypted backup times
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  wallets Wallet[] // A user can have multiple wallets
+  contacts Contact[] // A user has their own contacts
+}
+
+// Represents a root wallet (e.g., from one seed phrase or imported private key)
+model Wallet {
+  walletId            String    @id @default(uuid())
+  userId              String    // Foreign key to User
+  walletName          String
+  walletType          String    // 'mnemonic' or 'privateKey'
+  creationTimestamp   DateTime  @default(now())
+  lastAccessedTimestamp DateTime?
+  secureDataRef       String?   @unique // Reference to lookup ENCRYPTED data elsewhere (e.g., another service, or careful handling) - DO NOT STORE RAW KEYS HERE
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accounts Account[]
+
+  @@index([userId])
+}
+
+// Supported blockchain networks
+model Network {
+  networkId              String @id // e.g., 'eip155:1', 'solana:mainnet' (CAIP-2 standard recommended)
+  networkName            String @unique // e.g., "Ethereum Mainnet"
+  chainId                Int?   // e.g., 1, 137 (NULL for non-EVM like Solana)
+  rpcUrl                 String
+  explorerUrl            String?
+  nativeCurrencySymbol   String
+  nativeCurrencyDecimals Int
+  isTestnet              Boolean @default(false)
+
+  accounts Account[]
+  assets   Asset[]
+  transactions Transaction[]
+}
+
+// Represents a specific address on a specific network derived from a wallet
+model Account {
+  accountId           String    @id @default(uuid())
+  walletId            String    // Foreign key to Wallet
+  networkId           String    // Foreign key to Network
+  address             String    // The public address (e.g., "0x...")
+  accountName         String?   // User-given alias
+  derivationIndex     Int?      // Index if derived from mnemonic
+  derivationPath      String?   // Full path if non-standard or needed
+  lastSyncTimestamp   DateTime? // When balances/txs were last fetched
+  createdAt           DateTime  @default(now())
+
+  wallet Wallet @relation(fields: [walletId], references: [walletId], onDelete: Cascade)
+  network Network @relation(fields: [networkId], references: [networkId])
+  assets Asset[]
+  transactions Transaction[] // Transactions involving this account
+
+  @@unique([walletId, networkId, address]) // Ensure address uniqueness per wallet/network
+  @@index([walletId])
+  @@index([networkId])
+  @@index([address]) // Useful for fetching by address
+}
+
+// Tracks assets (native currency or tokens) held by an account
+model Asset {
+  assetId             String   @id @default(uuid())
+  accountId           String   // Foreign key to Account
+  networkId           String   // Foreign key to Network (denormalized for easier queries)
+  contractAddress     String?  // NULL for native currency
+  type                String   // 'native', 'erc20', 'erc721', 'erc1155'
+  symbol              String
+  name                String?
+  decimals            Int
+  logoUri             String?
+  balance             String   @default("0") // Store as string for precision (e.g., Wei for ETH)
+  balanceLastUpdated  DateTime?
+  userVisibility      Boolean  @default(true) // If user hid the token
+
+  account Account @relation(fields: [accountId], references: [accountId], onDelete: Cascade)
+  network Network @relation(fields: [networkId], references: [networkId])
+  transactions Transaction[] // Transactions involving this asset (e.g., token transfers)
+
+  @@unique([accountId, networkId, contractAddress]) // Primary key equivalent
+  @@index([accountId])
+  @@index([networkId])
+  @@index([contractAddress])
+}
+
+// Cache for transaction history related to user accounts
+model Transaction {
+  // Use a composite ID or generate a unique app-internal ID if needed
+  // Composite ID: txHash + networkId + accountId (ensures uniqueness per account's perspective)
+  txHash        String
+  networkId     String
+  accountId     String    // The user's account involved in this tx record
+
+  blockNumber   BigInt?   // Use BigInt for potentially large block numbers
+  timestamp     DateTime  // Use DateTime for easier sorting/filtering
+  nonce         Int?
+  fromAddress   String
+  toAddress     String?
+  value         String    @default("0") // Native currency value (string for precision)
+  gasUsed       String?   // Gas units (string)
+  gasPrice      String?   // Price per gas (string)
+  gasFee        String?   // Total fee (string)
+  inputData     String?   // Can be large, consider if needed or store hash/summary
+  status        String    // 'pending', 'confirmed', 'failed'
+  direction     String    // 'sent', 'received', 'self', 'approve', 'contract_interaction', etc.
+
+  // Optional link to specific asset involved (e.g., for token transfers identified via logs)
+  assetId       String?
+  assetValueChange String? // Amount of the token transferred (+/- based on direction) (string)
+
+  userNotes     String?
+  lastChecked   DateTime? @updatedAt // Track when Prisma last updated/checked this
+
+  account Account @relation(fields: [accountId], references: [accountId], onDelete: Cascade)
+  network Network @relation(fields: [networkId], references: [networkId])
+  asset   Asset?  @relation(fields: [assetId], references: [assetId]) // Relation to the specific asset if it's a token tx
+
+  @@id([txHash, networkId, accountId]) // Composite primary key
+  @@index([accountId])
+  @@index([networkId])
+  @@index([timestamp])
+  @@index([status])
+  @@index([assetId])
+  @@index([fromAddress]) // Useful for finding outgoing txs
+  @@index([toAddress])   // Useful for finding incoming txs
+}
+
+
+// User's address book
+model Contact {
+  contactId String   @id @default(uuid())
+  userId    String   // Foreign key to User
+  name      String
+  address   String
+  networkId String?  // Optional: Link to Network if chain-specific
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, address, networkId]) // Prevent duplicate contacts per user/network
+  @@index([userId])
+}

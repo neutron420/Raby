@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
+    "@prisma/client": "^6.18.0",
     "@react-navigation/bottom-tabs": "^7.4.0",
     "@react-navigation/elements": "^2.6.3",
     "@react-navigation/native": "^7.1.8",
@@ -25,6 +26,7 @@
     "expo-image": "~3.0.9",
     "expo-linear-gradient": "~15.0.7",
     "expo-linking": "~8.0.8",
+    "expo-local-authentication": "^17.0.7",
     "expo-router": "~6.0.11",
     "expo-secure-store": "~15.0.7",
     "expo-splash-screen": "~31.0.10",
@@ -48,6 +50,7 @@
     "@types/react": "~19.1.0",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~10.0.0",
+    "prisma": "^6.18.0",
     "typescript": "~5.9.2"
   },
   "private": true
