@@ -69,7 +69,7 @@ export default function CustomSplashScreen() {
       />
       <Animated.View style={{ opacity }}>
         {/* Added App Name */}
-        <ThemedText type="title" style={styles.title}>Raby</ThemedText>
+        <ThemedText type="title" style={styles.title}></ThemedText>
       </Animated.View>
     </LinearGradient>
   );

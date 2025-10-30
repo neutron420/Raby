@@ -1,109 +1,100 @@
-// context/WalletContext.tsx (Simplified Example)
-import React, { createContext, useState, useContext, ReactNode } from 'react';
+import 'react-native-get-random-values';
+import React, {
+  createContext,
+  useState,
+  useContext,
+  ReactNode,
+  useEffect,
+  useCallback,
+} from 'react';
 import { ethers } from 'ethers';
-import * as SecureStore from 'expo-secure-store';
+import Constants from 'expo-constants';
 
-interface WalletContextProps {
+const INFURA_API_KEY = Constants.expoConfig?.extra?.INFURA_API_KEY;
+
+if (!INFURA_API_KEY) {
+  console.warn('⚠️ INFURA_API_KEY not found. Please set it in .env');
+}
+
+const provider = new ethers.providers.JsonRpcProvider(
+  `https://sepolia.infura.io/v3/${INFURA_API_KEY}`
+);
+
+provider
+  .getNetwork()
+  .then((net) => console.log(' Connected to network:', net))
+  .catch((err) => console.error(' Network connection failed:', err));
+
+interface WalletState {
   wallet: ethers.Wallet | null;
+  address: string | null;
+  balance: string;
   isLoading: boolean;
-  unlockWallet: (password: string) => Promise<boolean>; // Returns true on success
-  lockWallet: () => void;
-  // Add functions to interact with the wallet if needed
+  setWallet: (wallet: ethers.Wallet | null) => void;
+  fetchWalletData: () => void;
 }
 
-const WalletContext = createContext<WalletContextProps | undefined>(undefined);
-
-// --- Placeholder Decryption (Same as in unlock screen - REPLACE) ---
-async function decryptDataWithPassword(encryptedData: string, passwordAttempt: string): Promise<string | null> {
-    console.warn("Using placeholder decryption in Context - Insecure!");
-    const storedPassword = await SecureStore.getItemAsync('dev_unsafe_password');
-    if (passwordAttempt === storedPassword) {
-        return await SecureStore.getItemAsync('walletMnemonic_dev_unsafe');
-    }
-    return null;
-}
-// --- End Placeholder ---
-
+const WalletContext = createContext<WalletState | undefined>(undefined);
 
 export const WalletProvider = ({ children }: { children: ReactNode }) => {
   const [wallet, setWallet] = useState<ethers.Wallet | null>(null);
-  const [isLoading, setIsLoading] = useState(false); // Loading state for unlock
+  const [address, setAddress] = useState<string | null>(null);
+  const [balance, setBalance] = useState('0.0');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const unlockWallet = async (password: string): Promise<boolean> => {
-    setIsLoading(true);
-    try {
-      // Fetch encrypted data (using unsafe placeholder key)
-      const storedData = await SecureStore.getItemAsync('walletMnemonic_dev_unsafe');
-      if (!storedData) {
-         console.error("No wallet data found in secure store.");
-         // Handle case where data is missing unexpectedly
-         // Maybe force logout / navigate to setup?
-         return false;
-      }
-
-      // Decrypt (using placeholder)
-      const decryptedMnemonic = await decryptDataWithPassword(storedData, password);
-
-      if (decryptedMnemonic) {
-        // Create wallet instance from decrypted mnemonic
-        const unlockedWallet = ethers.Wallet.fromMnemonic(decryptedMnemonic);
-        setWallet(unlockedWallet);
-        console.log("Wallet unlocked via Context");
-        return true; // Indicate success
-      } else {
-        console.log("Password incorrect in Context");
-        setWallet(null); // Ensure wallet is null on failure
-        return false; // Indicate failure
-      }
-    } catch (error) {
-      console.error("Error unlocking wallet in Context:", error);
+  const handleSetWallet = (newWallet: ethers.Wallet | null) => {
+    if (newWallet) {
+      const walletWithProvider = newWallet.connect(provider);
+      setWallet(walletWithProvider);
+      setAddress(walletWithProvider.address);
+      console.log(' Wallet set:', walletWithProvider.address);
+    } else {
       setWallet(null);
-      return false; // Indicate failure
-    } finally {
-      setIsLoading(false);
+      setAddress(null);
+      setBalance('0.0');
+      console.log(' Wallet cleared');
     }
   };
 
-  // Simpler biometric unlock assuming password unlock worked previously or data is accessible
-  // In a real app, this might re-verify biometrics and access securely stored key/password
-  const unlockWithBiometrics = async (): Promise<boolean> => {
-       setIsLoading(true);
-       try {
-           // Placeholder: Directly retrieve unsafe data if biometrics are assumed valid
-           const storedMnemonic = await SecureStore.getItemAsync('walletMnemonic_dev_unsafe');
-            if (storedMnemonic) {
-                const unlockedWallet = ethers.Wallet.fromMnemonic(storedMnemonic);
-                setWallet(unlockedWallet);
-                console.log("Wallet unlocked via Biometrics (Context Placeholder)");
-                return true;
-            }
-            return false;
-       } catch (error) {
-           console.error("Error unlocking with biometrics:", error);
-           return false;
-       } finally {
-            setIsLoading(false);
-       }
-  };
+  const fetchWalletData = useCallback(async () => {
+    if (!wallet || !wallet.provider) return;
+    setIsLoading(true);
+    try {
+      const bal = await wallet.getBalance();
+      setBalance(ethers.utils.formatEther(bal));
+      console.log(' Balance fetched:', ethers.utils.formatEther(bal));
+    } catch (err) {
+      console.error(' Failed to fetch balance:', err);
+      setBalance('0.0');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [wallet]);
 
-
-  const lockWallet = () => {
-    setWallet(null); // Clear the wallet instance from state
-    console.log("Wallet locked");
-    // Navigation back to unlock screen should happen in the component calling this
-  };
+  useEffect(() => {
+    if (wallet && wallet.provider) {
+      fetchWalletData();
+    }
+  }, [wallet, fetchWalletData]);
 
   return (
-    <WalletContext.Provider value={{ wallet, isLoading, unlockWallet, lockWallet }}>
+    <WalletContext.Provider
+      value={{
+        wallet,
+        address,
+        balance,
+        isLoading,
+        setWallet: handleSetWallet,
+        fetchWalletData,
+      }}
+    >
       {children}
     </WalletContext.Provider>
   );
 };
 
-export const useWallet = (): WalletContextProps => {
+export const useWallet = (): WalletState => {
   const context = useContext(WalletContext);
-  if (!context) {
-    throw new Error('useWallet must be used within a WalletProvider');
-  }
+  if (!context) throw new Error('useWallet must be used within WalletProvider');
   return context;
 };

@@ -1,6 +1,7 @@
+// app/(tabs)/_layout.tsx
 import { Tabs } from 'expo-router';
 import React from 'react';
-import { TabBarIcon } from '@/components/navigation/TabBarIcon'; // This import should now work
+import { TabBarIcon } from '@/components/navigation/TabBarIcon';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
@@ -12,6 +13,11 @@ export default function TabLayout() {
       screenOptions={{
         tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
         headerShown: false,
+        // UPDATED: Added these styles to make the tab bar dark
+        tabBarStyle: {
+          backgroundColor: '#0A0A0A', // Matches your screen background
+          borderTopWidth: 0, // Removes the white line
+        },
       }}>
       <Tabs.Screen
         name="index"
