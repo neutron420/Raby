@@ -14,18 +14,26 @@ import { ThemedView } from '@/components/themed-view';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/theme';
 import { useWallet } from '@/context/wallet-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { ethers } from 'ethers';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 
 export default function SendScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const { wallet, address, balance } = useWallet();
-  const [recipientAddress, setRecipientAddress] = useState('');
+  const [recipientAddress, setRecipientAddress] = useState((params.address as string) || '');
   const [amount, setAmount] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [gasEstimate, setGasEstimate] = useState<string | null>(null);
+
+  // Set address from params if provided
+  React.useEffect(() => {
+    if (params.address) {
+      setRecipientAddress(params.address as string);
+    }
+  }, [params.address]);
 
   const availableBalance = parseFloat(balance || '0');
   const amountValue = parseFloat(amount) || 0;
@@ -181,7 +189,15 @@ export default function SendScreen() {
 
         {/* Recipient Address */}
         <View style={styles.section}>
-          <ThemedText style={styles.sectionLabel}>Recipient Address</ThemedText>
+          <View style={styles.addressHeader}>
+            <ThemedText style={styles.sectionLabel}>Recipient Address</ThemedText>
+            <TouchableOpacity
+              onPress={() => router.push('/scan-qr')}
+              style={styles.scanButton}>
+              <Ionicons name="scan-outline" size={18} color={Colors.dark.tint} />
+              <ThemedText style={styles.scanButtonText}>Scan</ThemedText>
+            </TouchableOpacity>
+          </View>
           <View
             style={[
               styles.inputContainer,
@@ -192,7 +208,7 @@ export default function SendScreen() {
               style={styles.input}
               value={recipientAddress}
               onChangeText={setRecipientAddress}
-              placeholder="0x..."
+              placeholder="0x... or scan QR code"
               placeholderTextColor="#666"
               autoCapitalize="none"
               autoCorrect={false}
@@ -202,6 +218,13 @@ export default function SendScreen() {
             )}
             {isAddressValid === false && recipientAddress.length > 0 && (
               <Ionicons name="close-circle" size={20} color="#FF4444" />
+            )}
+            {!recipientAddress && (
+              <TouchableOpacity
+                onPress={() => router.push('/scan-qr')}
+                style={styles.scanIconButton}>
+                <Ionicons name="scan-outline" size={20} color={Colors.dark.tint} />
+              </TouchableOpacity>
             )}
           </View>
           {isAddressValid === false && recipientAddress.length > 0 && (
@@ -349,11 +372,33 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     marginTop: 24,
   },
+  addressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
   sectionLabel: {
     fontSize: 14,
     color: '#999',
-    marginBottom: 12,
     fontWeight: '500',
+  },
+  scanButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#2C2C2E',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    gap: 6,
+  },
+  scanButtonText: {
+    fontSize: 12,
+    color: Colors.dark.tint,
+    fontWeight: '600',
+  },
+  scanIconButton: {
+    padding: 4,
   },
   inputContainer: {
     flexDirection: 'row',

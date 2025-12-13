@@ -18,6 +18,7 @@ export default function RootLayout() {
         <Stack.Screen name="set-pin" />
         <Stack.Screen name="receive" />
         <Stack.Screen name="send" />
+        <Stack.Screen name="scan-qr" />
         <Stack.Screen name="(tabs)" />
       </Stack>
     </WalletProvider>

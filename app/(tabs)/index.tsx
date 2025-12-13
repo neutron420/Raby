@@ -79,7 +79,9 @@ export default function WalletScreen() {
         <Ionicons name="chevron-down-outline" size={16} color={Colors.dark.icon} />
       </View>
       <View style={styles.headerIcons}>
-        <TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => router.push('/scan-qr')}
+          activeOpacity={0.7}>
           <Ionicons name="scan-outline" size={24} color={Colors.dark.icon} />
         </TouchableOpacity>
       </View>

@@ -15,7 +15,9 @@ import {
     Share,
     StyleSheet,
     TouchableOpacity,
-    View
+    View,
+    Modal,
+    Pressable,
 } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 
@@ -26,6 +28,7 @@ export default function ReceiveScreen() {
   const router = useRouter();
   const { address } = useWallet();
   const [copied, setCopied] = useState(false);
+  const [qrModalVisible, setQrModalVisible] = useState(false);
 
   if (!address) {
     return (
@@ -85,7 +88,10 @@ export default function ReceiveScreen() {
             Share this QR code to receive payments
           </ThemedText>
 
-          <View style={styles.qrContainer}>
+          <TouchableOpacity
+            style={styles.qrContainer}
+            onPress={() => setQrModalVisible(true)}
+            activeOpacity={0.8}>
             <View style={styles.qrWrapper}>
               <QRCode
                 value={address}
@@ -94,7 +100,11 @@ export default function ReceiveScreen() {
                 backgroundColor="#000000"
               />
             </View>
-          </View>
+            <View style={styles.qrHint}>
+              <Ionicons name="expand-outline" size={18} color={Colors.dark.tint} />
+              <ThemedText style={styles.qrHintText}>Tap to enlarge</ThemedText>
+            </View>
+          </TouchableOpacity>
 
           <View style={styles.addressContainer}>
             <ThemedText style={styles.addressLabel}>Your Address</ThemedText>
@@ -159,6 +169,45 @@ export default function ReceiveScreen() {
           </View>
         </View>
       </ScrollView>
+
+      {/* QR Code Modal */}
+      <Modal
+        visible={qrModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setQrModalVisible(false)}>
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setQrModalVisible(false)}>
+          <View style={styles.modalContent}>
+            <TouchableOpacity
+              style={styles.modalCloseButton}
+              onPress={() => setQrModalVisible(false)}>
+              <Ionicons name="close" size={28} color="#FFFFFF" />
+            </TouchableOpacity>
+            <View style={styles.modalQrContainer}>
+              <QRCode
+                value={address}
+                size={Dimensions.get('window').width * 0.8}
+                color="#FFFFFF"
+                backgroundColor="#000000"
+              />
+            </View>
+            <ThemedText style={styles.modalAddressText} numberOfLines={1}>
+              {address}
+            </ThemedText>
+            <TouchableOpacity
+              style={styles.modalCopyButton}
+              onPress={async () => {
+                await handleCopyAddress();
+                setQrModalVisible(false);
+              }}>
+              <Ionicons name="copy" size={20} color="#000" />
+              <ThemedText style={styles.modalCopyButtonText}>Copy Address</ThemedText>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
     </ThemedView>
   );
 }
@@ -228,11 +277,70 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 10,
     elevation: 8,
+    position: 'relative',
   },
   qrWrapper: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 16,
+  },
+  qrHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 12,
+    gap: 6,
+  },
+  qrHintText: {
+    color: Colors.dark.tint,
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#1C1C1E',
+    borderRadius: 24,
+    padding: 24,
+    alignItems: 'center',
+    width: '90%',
+    maxWidth: 400,
+  },
+  modalCloseButton: {
+    alignSelf: 'flex-end',
+    padding: 8,
+    marginBottom: 16,
+  },
+  modalQrContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 20,
+  },
+  modalAddressText: {
+    fontSize: 12,
+    color: '#999',
+    fontFamily: 'monospace',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  modalCopyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.dark.tint,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 12,
+    gap: 8,
+  },
+  modalCopyButtonText: {
+    color: '#000',
+    fontSize: 16,
+    fontWeight: '600',
   },
   addressContainer: {
     width: '100%',
