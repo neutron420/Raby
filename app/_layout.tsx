@@ -1,8 +1,8 @@
 // app/_layout.tsx
+import { WalletProvider } from '@/context/wallet-context';
+import { Stack } from 'expo-router';
 import 'react-native-get-random-values'; // Keep this as backup
 import 'react-native-reanimated';
-import { Stack } from 'expo-router';
-import { WalletProvider } from '@/context/wallet-context';
 
 export default function RootLayout() {
   return (
@@ -16,6 +16,8 @@ export default function RootLayout() {
         <Stack.Screen name="import-key" />
         <Stack.Screen name="unlock-wallet" />
         <Stack.Screen name="set-pin" />
+        <Stack.Screen name="receive" />
+        <Stack.Screen name="send" />
         <Stack.Screen name="(tabs)" />
       </Stack>
     </WalletProvider>

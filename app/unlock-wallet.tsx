@@ -48,21 +48,27 @@ export default function UnlockWalletScreen() {
 
   useEffect(() => {
     const checkBiometrics = async () => {
-      const hasHardware = await LocalAuthentication.hasHardwareAsync();
-      const isEnrolled = await LocalAuthentication.isEnrolledAsync();
-      const enabledPref = await SecureStore.getItemAsync('biometricsEnabled');
-      const pinIsSetup = !!(await SecureStore.getItemAsync('walletPinHash'));
+      // Run all checks in parallel for speed
+      const [hasHardware, isEnrolled, enabledPref, pinHash] = await Promise.all([
+        LocalAuthentication.hasHardwareAsync(),
+        LocalAuthentication.isEnrolledAsync(),
+        SecureStore.getItemAsync('biometricsEnabled'),
+        SecureStore.getItemAsync('walletPinHash'),
+      ]);
 
-      setIsBiometricsAvailable(hasHardware && isEnrolled && pinIsSetup);
-      setBiometricsEnabledByUser(enabledPref === 'true' && pinIsSetup);
+      const pinIsSetup = !!pinHash;
+      const biometricsAvailable = hasHardware && isEnrolled && pinIsSetup;
+      const biometricsEnabled = enabledPref === 'true' && pinIsSetup;
 
-      if (
-        hasHardware &&
-        isEnrolled &&
-        enabledPref === 'true' &&
-        pinIsSetup
-      ) {
-        handleBiometricUnlock();
+      setIsBiometricsAvailable(biometricsAvailable);
+      setBiometricsEnabledByUser(biometricsEnabled);
+
+      // Auto-trigger biometric if enabled
+      if (biometricsAvailable && biometricsEnabled) {
+        // Small delay to ensure UI is ready
+        requestAnimationFrame(() => {
+          handleBiometricUnlock();
+        });
       }
     };
     checkBiometrics();
@@ -78,12 +84,16 @@ export default function UnlockWalletScreen() {
 
     try {
       const salt = 'YOUR_UNIQUE_APP_SALT';
-      const enteredPinHash = await Crypto.digestStringAsync(
-        Crypto.CryptoDigestAlgorithm.SHA256,
-        pin + salt,
-      );
-
-      const storedPinHash = await SecureStore.getItemAsync('walletPinHash');
+      
+      // Run hash and SecureStore operations in parallel for speed
+      const [enteredPinHash, storedPinHash, encryptedMnemonic] = await Promise.all([
+        Crypto.digestStringAsync(
+          Crypto.CryptoDigestAlgorithm.SHA256,
+          pin + salt,
+        ),
+        SecureStore.getItemAsync('walletPinHash'),
+        SecureStore.getItemAsync('walletMnemonic_dev_unsafe'),
+      ]);
 
       if (!storedPinHash) {
         Alert.alert(
@@ -95,48 +105,50 @@ export default function UnlockWalletScreen() {
         return;
       }
 
-      if (enteredPinHash === storedPinHash) {
-        const encryptedMnemonic = await SecureStore.getItemAsync(
-          'walletMnemonic_dev_unsafe',
-        );
-
-        if (!encryptedMnemonic) {
-          Alert.alert(
-            'Wallet Data Error',
-            'Wallet data is missing. Please reset and import again.',
-          );
-          setIsLoading(false);
-          return;
-        }
-
-        const decryptedMnemonic = await decryptDataPlaceholder(
-          encryptedMnemonic,
-          storedPinHash,
-        );
-
-        if (decryptedMnemonic) {
-          // UPDATED: This is the fix for "invalid hexlify value"
-          const unlockedWallet = ethers.Wallet.fromMnemonic(decryptedMnemonic);
-          setWallet(unlockedWallet);
-
-          console.log('PIN Unlock Successful, wallet set in context');
-          router.replace('/(tabs)');
-        } else {
-          Alert.alert(
-            'Decryption Failed',
-            'Could not decrypt wallet data, even with correct PIN.',
-          );
-          setPin('');
-        }
-      } else {
+      if (enteredPinHash !== storedPinHash) {
         Alert.alert('Incorrect PIN', 'The PIN you entered is incorrect.');
         setPin('');
+        setIsLoading(false);
+        return;
       }
+
+      if (!encryptedMnemonic) {
+        Alert.alert(
+          'Wallet Data Error',
+          'Wallet data is missing. Please reset and import again.',
+        );
+        setIsLoading(false);
+        return;
+      }
+
+      // Decrypt and unlock wallet
+      const decryptedMnemonic = await decryptDataPlaceholder(
+        encryptedMnemonic,
+        storedPinHash,
+      );
+
+      if (!decryptedMnemonic) {
+        Alert.alert(
+          'Decryption Failed',
+          'Could not decrypt wallet data, even with correct PIN.',
+        );
+        setPin('');
+        setIsLoading(false);
+        return;
+      }
+
+      // Create wallet and set in context - do this synchronously for speed
+      const unlockedWallet = ethers.Wallet.fromMnemonic(decryptedMnemonic);
+      setWallet(unlockedWallet);
+
+      console.log('PIN Unlock Successful, wallet set in context');
+      
+      // Navigate immediately - no delay needed
+      router.replace('/(tabs)');
     } catch (error) {
       console.error('Error during PIN unlock:', error);
       Alert.alert('Unlock Error', 'An error occurred during unlock.');
       setPin('');
-    } finally {
       setIsLoading(false);
     }
   };
@@ -147,26 +159,12 @@ export default function UnlockWalletScreen() {
     try {
       const result = await LocalAuthentication.authenticateAsync({
         promptMessage: 'Unlock Raby Wallet',
+        disableDeviceFallback: false,
+        cancelLabel: 'Cancel',
       });
-      if (result.success) {
-        const storedMnemonic = await SecureStore.getItemAsync(
-          'walletMnemonic_dev_unsafe',
-        );
-        if (storedMnemonic) {
-          // UPDATED: This is the fix for "invalid hexlify value"
-          const unlockedWallet = ethers.Wallet.fromMnemonic(storedMnemonic);
-          setWallet(unlockedWallet);
-
-          console.log('Biometric Unlock Successful, wallet set in context');
-          router.replace('/(tabs)');
-        } else {
-          Alert.alert(
-            'Error',
-            'Wallet data not found after biometric unlock.',
-          );
-          router.replace('/wallet-setup');
-        }
-      } else {
+      
+      if (!result.success) {
+        // User cancelled or authentication failed
         if (
           result.error !== 'user_cancel' &&
           result.error !== 'system_cancel'
@@ -176,11 +174,36 @@ export default function UnlockWalletScreen() {
             'Biometric authentication failed.',
           );
         }
+        setIsLoading(false);
+        return;
       }
+
+      // Authentication successful - get mnemonic and unlock
+      const storedMnemonic = await SecureStore.getItemAsync(
+        'walletMnemonic_dev_unsafe',
+      );
+      
+      if (!storedMnemonic) {
+        Alert.alert(
+          'Error',
+          'Wallet data not found after biometric unlock.',
+        );
+        router.replace('/wallet-setup');
+        setIsLoading(false);
+        return;
+      }
+
+      // Create wallet and set in context - do this synchronously for speed
+      const unlockedWallet = ethers.Wallet.fromMnemonic(storedMnemonic);
+      setWallet(unlockedWallet);
+
+      console.log('Biometric Unlock Successful, wallet set in context');
+      
+      // Navigate immediately - no delay needed
+      router.replace('/(tabs)');
     } catch (error) {
       console.error('Error during biometric unlock:', error);
       Alert.alert('Biometric Error', 'An error occurred.');
-    } finally {
       setIsLoading(false);
     }
   };

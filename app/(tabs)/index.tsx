@@ -1,42 +1,66 @@
 // app/(tabs)/index.tsx
-import React, { useState } from 'react';
-import {
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  View,
-  Alert,
-  ActivityIndicator, // UPDATED: Import ActivityIndicator
-  RefreshControl, // UPDATED: Import RefreshControl
-} from 'react-native';
+import { PriceChart } from '@/components/price-chart';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/theme';
+import { useWallet } from '@/context/wallet-context';
+import { Ionicons } from '@expo/vector-icons';
+import { ethers } from 'ethers';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
-import { useWallet } from '@/context/wallet-context'; // UPDATED: Import the hook
+import { useRouter } from 'expo-router';
+import React, { useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 
-// --- Dummy Data (Only for non-native assets) ---
-const DUMMY_ASSETS = [
-  // The native asset (ETH) will be handled by our context
-  {
-    symbol: 'RBY',
-    name: 'Raby Token',
-    balanceToken: '1,250',
-    balanceUsd: '0.00',
-    icon: 'aperture-outline', // Using Ionicons as placeholder
-  },
+// Popular cryptocurrencies to display
+const POPULAR_CRYPTOS = [
+  { symbol: 'BTC', name: 'Bitcoin', icon: 'logo-bitcoin', balance: 0 },
+  { symbol: 'ETH', name: 'Ethereum', icon: 'diamond-outline', balance: 0 },
+  { symbol: 'USDT', name: 'Tether', icon: 'cash-outline', balance: 0 },
+  { symbol: 'USDC', name: 'USD Coin', icon: 'cash-outline', balance: 0 },
+  { symbol: 'BNB', name: 'Binance Coin', icon: 'logo-firebase', balance: 0 },
+  { symbol: 'SOL', name: 'Solana', icon: 'sunny-outline', balance: 0 },
+  { symbol: 'XRP', name: 'Ripple', icon: 'flash-outline', balance: 0 },
+  { symbol: 'ADA', name: 'Cardano', icon: 'diamond-outline', balance: 0 },
+  { symbol: 'DOGE', name: 'Dogecoin', icon: 'paw-outline', balance: 0 },
+  { symbol: 'MATIC', name: 'Polygon', icon: 'apps-outline', balance: 0 },
 ];
-// --- End Dummy Data ---
 
 type WalletTab = 'assets' | 'activity';
 
 export default function WalletScreen() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<WalletTab>('assets');
+  const [searchQuery, setSearchQuery] = useState('');
 
-  // UPDATED: Get LIVE data from the context
-  const { address, balance, isLoading, fetchWalletData } = useWallet();
+  // Get LIVE data from the context including price data
+  const {
+    wallet,
+    address,
+    balance,
+    isLoading,
+    cryptoPrices,
+    cryptoPriceHistory,
+    totalUsdValue,
+    isPriceLoading,
+    fetchWalletData,
+    fetchPriceData,
+    getCryptoPrice,
+    getCryptoPriceHistory,
+  } = useWallet();
+
+  // Get ETH price and history for the chart
+  const ethPrice = getCryptoPrice('ETH');
+  const ethPriceHistory = getCryptoPriceHistory('ETH');
 
   const handleCopyAddress = async () => {
     if (!address) return;
@@ -62,61 +86,101 @@ export default function WalletScreen() {
     </View>
   );
 
-  const renderBalanceSection = () => (
-    <View style={styles.balanceContainer}>
-      {/* UPDATED: Show loading indicator or USD value */}
-      <ThemedText style={styles.balanceUsd}>
-        {isLoading && balance === '0.0' ? (
-          <ActivityIndicator size="large" color={Colors.dark.text} />
-        ) : (
-          '$0.00' // Note: Real USD balance requires a price API
-        )}
-      </ThemedText>
+  const renderBalanceSection = () => {
+    const displayUsdValue = totalUsdValue > 0 
+      ? `$${totalUsdValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+      : '$0.00';
 
-      {/* UPDATED: Show loading text or formatted balance */}
-      <ThemedText style={styles.balanceNative}>
-        {isLoading && balance === '0.0'
-          ? 'Loading...'
-          : `${parseFloat(balance).toFixed(4)} ETH`}
-      </ThemedText>
-
-      {/* UPDATED: Show live address */}
-      <TouchableOpacity
-        style={styles.addressBox}
-        onPress={handleCopyAddress}
-        activeOpacity={0.7}
-        disabled={!address}>
-        <ThemedText style={styles.addressText}>
-          {address
-            ? `${address.slice(0, 6)}...${address.slice(-4)}`
-            : 'No Address Found'}
+    return (
+      <View style={styles.balanceContainer}>
+        {/* Show real USD value */}
+        <ThemedText style={styles.balanceUsd}>
+          {(isLoading || isPriceLoading) && balance === '0.0' ? (
+            <ActivityIndicator size="large" color={Colors.dark.text} />
+          ) : (
+            displayUsdValue
+          )}
         </ThemedText>
-        <Ionicons name="copy-outline" size={16} color={Colors.dark.icon} />
-      </TouchableOpacity>
-    </View>
-  );
+
+        {/* Show loading text or formatted balance */}
+        <ThemedText style={styles.balanceNative}>
+          {isLoading && balance === '0.0'
+            ? 'Loading...'
+            : `${parseFloat(balance).toFixed(4)} ETH`}
+        </ThemedText>
+
+        {/* Show price chart */}
+        {ethPrice && ethPriceHistory.length > 0 && ethPrice.current_price && (
+          <PriceChart
+            data={ethPriceHistory}
+            currentPrice={ethPrice.current_price}
+            priceChange24h={ethPrice.price_change_percentage_24h || 0}
+            isLoading={isPriceLoading}
+          />
+        )}
+
+        {/* Show live address */}
+        <TouchableOpacity
+          style={styles.addressBox}
+          onPress={handleCopyAddress}
+          activeOpacity={0.7}
+          disabled={!address}>
+          <ThemedText style={styles.addressText}>
+            {address
+              ? `${address.slice(0, 6)}...${address.slice(-4)}`
+              : 'No Address Found'}
+          </ThemedText>
+          <Ionicons name="copy-outline" size={16} color={Colors.dark.icon} />
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  const handleBuy = () => {
+    Alert.alert('Buy Crypto', 'Buy functionality will be implemented soon!', [{ text: 'OK' }]);
+  };
+
+  const handleSell = () => {
+    Alert.alert('Sell Crypto', 'Sell functionality will be implemented soon!', [{ text: 'OK' }]);
+  };
+
+  const handleSwap = () => {
+    Alert.alert('Swap Crypto', 'Swap functionality will be implemented soon!', [{ text: 'OK' }]);
+  };
+
+  const handleSend = () => {
+    router.push('/send');
+  };
+
+  const handleReceive = () => {
+    if (!address) {
+      Alert.alert('Error', 'Wallet address not available');
+      return;
+    }
+    router.push('/receive');
+  };
 
   const renderActionButtons = () => (
     <View style={styles.actionsContainer}>
-      <TouchableOpacity style={styles.actionButton}>
+      <TouchableOpacity style={styles.actionButton} onPress={handleSend}>
         <View style={[styles.actionIconCircle, { backgroundColor: Colors.dark.tint }]}>
           <Ionicons name="arrow-up-outline" size={28} color="#000" />
         </View>
         <ThemedText style={styles.actionText}>Send</ThemedText>
       </TouchableOpacity>
-      <TouchableOpacity style={styles.actionButton}>
+      <TouchableOpacity style={styles.actionButton} onPress={handleReceive}>
         <View style={[styles.actionIconCircle, { backgroundColor: Colors.dark.tint }]}>
           <Ionicons name="arrow-down-outline" size={28} color="#000" />
         </View>
         <ThemedText style={styles.actionText}>Receive</ThemedText>
       </TouchableOpacity>
-      <TouchableOpacity style={styles.actionButton}>
+      <TouchableOpacity style={styles.actionButton} onPress={handleBuy}>
         <View style={[styles.actionIconCircle, { backgroundColor: '#2C2C2E' }]}>
           <Ionicons name="card-outline" size={28} color={Colors.dark.tint} />
         </View>
         <ThemedText style={styles.actionText}>Buy</ThemedText>
       </TouchableOpacity>
-      <TouchableOpacity style={styles.actionButton}>
+      <TouchableOpacity style={styles.actionButton} onPress={handleSwap}>
         <View style={[styles.actionIconCircle, { backgroundColor: '#2C2C2E' }]}>
           <Ionicons name="swap-horizontal-outline" size={28} color={Colors.dark.tint} />
         </View>
@@ -129,7 +193,10 @@ export default function WalletScreen() {
     <View style={styles.tabsContainer}>
       <TouchableOpacity
         style={styles.tab}
-        onPress={() => setActiveTab('assets')}>
+        onPress={() => {
+          setActiveTab('assets');
+          setSearchQuery(''); // Clear search when switching to assets
+        }}>
         <ThemedText
           style={[
             styles.tabText,
@@ -141,7 +208,10 @@ export default function WalletScreen() {
       </TouchableOpacity>
       <TouchableOpacity
         style={styles.tab}
-        onPress={() => setActiveTab('activity')}>
+        onPress={() => {
+          setActiveTab('activity');
+          setSearchQuery(''); // Clear search when switching to activity
+        }}>
         <ThemedText
           style={[
             styles.tabText,
@@ -154,54 +224,177 @@ export default function WalletScreen() {
     </View>
   );
 
-  // UPDATED: This function now renders the native asset with live data
-  const renderNativeAsset = () => (
-    <TouchableOpacity key="ETH" style={styles.assetRow}>
-      <View style={styles.assetIcon}>
-        {/* UPDATED: Fixed icon name */}
-        <Ionicons name="logo-ethereum" size={24} color={Colors.dark.tint} />
+  // Filter cryptocurrencies based on search query
+  const filteredCryptos = useMemo(() => {
+    if (!searchQuery.trim()) return POPULAR_CRYPTOS;
+    const query = searchQuery.toLowerCase();
+    return POPULAR_CRYPTOS.filter(
+      (crypto) =>
+        crypto.symbol.toLowerCase().includes(query) ||
+        crypto.name.toLowerCase().includes(query),
+    );
+  }, [searchQuery]);
+
+  const renderCryptoAsset = (crypto: typeof POPULAR_CRYPTOS[0]) => {
+    const price = getCryptoPrice(crypto.symbol);
+    const priceChange = price?.price_change_percentage_24h || 0;
+    const isPositive = priceChange >= 0;
+    
+    // For ETH, use actual balance, for others use 0 (can be expanded later)
+    const tokenBalance = crypto.symbol === 'ETH' ? parseFloat(balance || '0') : crypto.balance;
+    const currentPrice = price?.current_price || 0;
+    const usdValue = currentPrice > 0 && tokenBalance > 0 ? tokenBalance * currentPrice : 0;
+
+    return (
+      <TouchableOpacity
+        key={crypto.symbol}
+        style={styles.assetRow}
+        onPress={() => router.push({ pathname: '/crypto-detail', params: { symbol: crypto.symbol } })}>
+        <View style={styles.assetIcon}>
+          <Ionicons name={crypto.icon as any} size={24} color={Colors.dark.tint} />
+        </View>
+        <View style={styles.assetName}>
+          <ThemedText style={styles.assetSymbol}>{crypto.symbol}</ThemedText>
+          <ThemedText style={styles.assetNameText}>{crypto.name}</ThemedText>
+          {price && (
+            <View style={styles.priceChangeRow}>
+              <Ionicons
+                name={isPositive ? 'trending-up' : 'trending-down'}
+                size={12}
+                color={isPositive ? '#00FF88' : '#FF4444'}
+                style={styles.trendIcon}
+              />
+              <ThemedText
+                style={[
+                  styles.priceChangeText,
+                  isPositive ? styles.positiveChange : styles.negativeChange,
+                ]}>
+                {isPositive ? '+' : ''}
+                {priceChange.toFixed(2)}%
+              </ThemedText>
+            </View>
+          )}
+        </View>
+        <View style={styles.assetBalance}>
+          <ThemedText style={styles.assetBalanceUsd}>
+            {isPriceLoading && !price
+              ? '...'
+              : usdValue != null
+              ? `$${usdValue.toLocaleString('en-US', {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}`
+              : '$0.00'}
+          </ThemedText>
+          <ThemedText style={styles.assetBalanceToken}>
+            {tokenBalance > 0
+              ? `${tokenBalance.toFixed(crypto.symbol === 'ETH' ? 4 : 2)} ${crypto.symbol}`
+              : `0.00 ${crypto.symbol}`}
+          </ThemedText>
+          {price && price.current_price != null && (
+            <ThemedText style={styles.assetPrice}>
+              ${price.current_price.toLocaleString('en-US', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
+            </ThemedText>
+          )}
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [isLoadingTransactions, setIsLoadingTransactions] = useState(false);
+
+  // Fetch transactions when Activity tab is active
+  React.useEffect(() => {
+    if (activeTab === 'activity' && address && wallet?.provider) {
+      fetchTransactions();
+    }
+  }, [activeTab, address, wallet]);
+
+  const fetchTransactions = async () => {
+    if (!address || !wallet?.provider) return;
+    
+    setIsLoadingTransactions(true);
+    try {
+      // For now, we'll show a placeholder
+      // In production, you'd fetch from Etherscan or your backend
+      setTransactions([]);
+    } catch (error) {
+      console.error('Error fetching transactions:', error);
+    } finally {
+      setIsLoadingTransactions(false);
+    }
+  };
+
+  const renderActivityRow = (tx: any, index: number) => (
+    <TouchableOpacity
+      key={index}
+      style={styles.activityRow}
+      onPress={() => {
+        Alert.alert('Transaction', `Hash: ${tx.hash}`, [{ text: 'OK' }]);
+      }}>
+      <View style={styles.activityIconContainer}>
+        <Ionicons
+          name={tx.direction === 'sent' ? 'arrow-up' : 'arrow-down'}
+          size={20}
+          color={tx.direction === 'sent' ? '#FF4444' : '#00FF88'}
+        />
       </View>
-      <View style={styles.assetName}>
-        <ThemedText style={styles.assetSymbol}>ETH</ThemedText>
-        <ThemedText style={styles.assetNameText}>Ethereum</ThemedText>
+      <View style={styles.activityContent}>
+        <ThemedText style={styles.activityType}>
+          {tx.direction === 'sent' ? 'Sent' : 'Received'}
+        </ThemedText>
+        <ThemedText style={styles.activityAddress} numberOfLines={1}>
+          {tx.direction === 'sent' ? `To: ${tx.to?.slice(0, 8)}...` : `From: ${tx.from?.slice(0, 8)}...`}
+        </ThemedText>
+        <ThemedText style={styles.activityTime}>
+          {new Date(tx.timestamp).toLocaleDateString()}
+        </ThemedText>
       </View>
-      <View style={styles.assetBalance}>
-        <ThemedText style={styles.assetBalanceUsd}>$0.00</ThemedText>
-        <ThemedText style={styles.assetBalanceToken}>
-          {isLoading
-            ? '...'
-            : `${parseFloat(balance).toFixed(4)} ETH`}
+      <View style={styles.activityAmount}>
+        <ThemedText
+          style={[
+            styles.activityAmountText,
+            tx.direction === 'sent' ? styles.activityAmountSent : styles.activityAmountReceived,
+          ]}>
+          {tx.direction === 'sent' ? '-' : '+'}
+          {parseFloat(ethers.utils.formatEther(tx.value || '0')).toFixed(4)} ETH
+        </ThemedText>
+        <ThemedText style={styles.activityStatus}>
+          {tx.status === 'confirmed' ? 'Confirmed' : tx.status === 'pending' ? 'Pending' : 'Failed'}
         </ThemedText>
       </View>
     </TouchableOpacity>
   );
 
-  const renderAssetRow = (asset: (typeof DUMMY_ASSETS)[0]) => (
-    <TouchableOpacity key={asset.symbol} style={styles.assetRow}>
-      <View style={styles.assetIcon}>
-        <Ionicons name={asset.icon as any} size={24} color={Colors.dark.tint} />
-      </View>
-      <View style={styles.assetName}>
-        <ThemedText style={styles.assetSymbol}>{asset.symbol}</ThemedText>
-        <ThemedText style={styles.assetNameText}>{asset.name}</ThemedText>
-      </View>
-      <View style={styles.assetBalance}>
-        <ThemedText style={styles.assetBalanceUsd}>${asset.balanceUsd}</ThemedText>
-        <ThemedText style={styles.assetBalanceToken}>
-          {asset.balanceToken} {asset.symbol}
-        </ThemedText>
-      </View>
-    </TouchableOpacity>
-  );
+  const renderActivityContent = () => {
+    if (isLoadingTransactions) {
+      return (
+        <View style={styles.placeholderContainer}>
+          <ActivityIndicator size="large" color={Colors.dark.tint} />
+          <ThemedText style={styles.placeholderText}>Loading transactions...</ThemedText>
+        </View>
+      );
+    }
 
-  const renderActivityRow = () => (
-    <View style={styles.placeholderContainer}>
-      <Ionicons name="receipt-outline" size={48} color={Colors.dark.icon} />
-      <ThemedText style={styles.placeholderText}>
-        No transactions yet
-      </ThemedText>
-    </View>
-  );
+    if (transactions.length === 0) {
+      return (
+        <View style={styles.placeholderContainer}>
+          <Ionicons name="receipt-outline" size={48} color={Colors.dark.icon} />
+          <ThemedText style={styles.placeholderText}>No transactions yet</ThemedText>
+          <ThemedText style={styles.placeholderSubtext}>
+            Your transaction history will appear here
+          </ThemedText>
+        </View>
+      );
+    }
+
+    return transactions.map((tx, index) => renderActivityRow(tx, index));
+  };
 
   return (
     <ThemedView style={styles.container}>
@@ -210,8 +403,11 @@ export default function WalletScreen() {
         // NEW: Added pull-to-refresh
         refreshControl={
           <RefreshControl
-            refreshing={isLoading}
-            onRefresh={fetchWalletData}
+            refreshing={isLoading || isPriceLoading}
+            onRefresh={() => {
+              fetchWalletData();
+              fetchPriceData();
+            }}
             tintColor={Colors.dark.tint} // For iOS
           />
         }>
@@ -220,15 +416,42 @@ export default function WalletScreen() {
         {renderActionButtons()}
         {renderTabs()}
 
+        {/* Search Bar */}
+        {activeTab === 'assets' && (
+          <View style={styles.searchContainer}>
+            <Ionicons name="search-outline" size={20} color={Colors.dark.icon} style={styles.searchIcon} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search cryptocurrencies..."
+              placeholderTextColor="#666"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
+                <Ionicons name="close-circle" size={20} color={Colors.dark.icon} />
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
         <View style={styles.listContainer}>
           {activeTab === 'assets' ? (
             <>
-              {/* UPDATED: Always render native asset first, then dummy assets */}
-              {renderNativeAsset()}
-              {DUMMY_ASSETS.map(renderAssetRow)}
+              {filteredCryptos.length > 0 ? (
+                filteredCryptos.map(renderCryptoAsset)
+              ) : (
+                <View style={styles.noResultsContainer}>
+                  <Ionicons name="search-outline" size={48} color={Colors.dark.icon} />
+                  <ThemedText style={styles.noResultsText}>No cryptocurrencies found</ThemedText>
+                  <ThemedText style={styles.noResultsSubtext}>
+                    Try searching with a different term
+                  </ThemedText>
+                </View>
+              )}
             </>
           ) : (
-            renderActivityRow()
+            renderActivityContent()
           )}
         </View>
       </ScrollView>
@@ -418,6 +641,29 @@ const styles = StyleSheet.create({
     color: '#A0A0A0',
     marginTop: 2,
   },
+  assetPrice: {
+    fontSize: 11,
+    color: '#666',
+    marginTop: 2,
+  },
+  priceChangeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  trendIcon: {
+    marginRight: 4,
+  },
+  priceChangeText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  positiveChange: {
+    color: '#00FF88',
+  },
+  negativeChange: {
+    color: '#FF4444',
+  },
   placeholderContainer: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -426,6 +672,105 @@ const styles = StyleSheet.create({
   placeholderText: {
     marginTop: 16,
     fontSize: 15,
+    color: '#888',
+  },
+  placeholderSubtext: {
+    color: '#666',
+    fontSize: 13,
+    marginTop: 8,
+  },
+  activityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1F1F1F',
+  },
+  activityIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#1C1C1E',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  activityContent: {
+    flex: 1,
+  },
+  activityType: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginBottom: 4,
+  },
+  activityAddress: {
+    fontSize: 13,
+    color: '#999',
+    marginBottom: 4,
+    fontFamily: 'monospace',
+  },
+  activityTime: {
+    fontSize: 12,
+    color: '#666',
+  },
+  activityAmount: {
+    alignItems: 'flex-end',
+  },
+  activityAmountText: {
+    fontSize: 15,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  activityAmountSent: {
+    color: '#FF4444',
+  },
+  activityAmountReceived: {
+    color: '#00FF88',
+  },
+  activityStatus: {
+    fontSize: 11,
+    color: '#666',
+    textTransform: 'uppercase',
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1B1B1E',
+    borderRadius: 12,
+    marginHorizontal: 20,
+    marginBottom: 15,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: '#2A2A2D',
+  },
+  searchIcon: {
+    marginRight: 12,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#FFFFFF',
+    padding: 0,
+  },
+  clearButton: {
+    padding: 4,
+  },
+  noResultsContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+  },
+  noResultsText: {
+    marginTop: 16,
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  noResultsSubtext: {
+    marginTop: 8,
+    fontSize: 14,
     color: '#888',
   },
 });

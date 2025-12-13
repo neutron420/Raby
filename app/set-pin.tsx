@@ -40,21 +40,29 @@ export default function SetPinScreen() {
 
   useEffect(() => {
     const checkExistingPin = async () => {
-      const existingHash = await SecureStore.getItemAsync('walletPinHash');
+      // Fetch both in parallel for speed
+      const [existingHash, bioPref] = await Promise.all([
+        SecureStore.getItemAsync('walletPinHash'),
+        SecureStore.getItemAsync('biometricsEnabled'),
+      ]);
+      
       const isSet = !!existingHash;
       setPinExists(isSet);
+      setEnableBiometrics(bioPref === 'true');
       
       // Set initial focus
       if (isSet) {
         setFocusedInput('current');
-        currentPinRef.current?.focus();
+        // Use requestAnimationFrame for smoother focus
+        requestAnimationFrame(() => {
+          currentPinRef.current?.focus();
+        });
       } else {
         setFocusedInput('new');
-        newPinRef.current?.focus();
+        requestAnimationFrame(() => {
+          newPinRef.current?.focus();
+        });
       }
-
-      const bioPref = await SecureStore.getItemAsync('biometricsEnabled');
-      setEnableBiometrics(bioPref === 'true');
     };
     checkExistingPin();
   }, []);
@@ -89,11 +97,14 @@ export default function SetPinScreen() {
         newPin + salt,
       );
 
-      await SecureStore.setItemAsync('walletPinHash', hashedPin);
-      await SecureStore.setItemAsync(
-        'biometricsEnabled',
-        JSON.stringify(enableBiometrics),
-      );
+      // Save both values in parallel for speed
+      await Promise.all([
+        SecureStore.setItemAsync('walletPinHash', hashedPin),
+        SecureStore.setItemAsync(
+          'biometricsEnabled',
+          JSON.stringify(enableBiometrics),
+        ),
+      ]);
 
       Alert.alert(
         'PIN Updated',
