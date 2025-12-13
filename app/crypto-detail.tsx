@@ -12,7 +12,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -409,30 +409,39 @@ export default function CryptoDetailScreen() {
         showsVerticalScrollIndicator={false}>
         {/* Price Section with better styling */}
         <View style={styles.priceSection}>
-          <View style={styles.priceRow}>
-            <ThemedText style={styles.currentPriceText}>
-              ${formatPrice(currentPrice, currentPrice < 1 ? 4 : 2)}
-            </ThemedText>
-            <View
-              style={[
-                styles.priceChangeBadge,
-                isPositive ? styles.positiveBadge : styles.negativeBadge,
-              ]}>
-              <Ionicons
-                name={isPositive ? 'trending-up' : 'trending-down'}
-                size={14}
-                color={isPositive ? '#00FF88' : '#FF4444'}
-              />
-              <ThemedText
-                style={[
-                  styles.priceChangeText,
-                  isPositive ? styles.positiveChange : styles.negativeChange,
-                ]}>
-                {isPositive ? '+' : ''}
-                {priceChange24h.toFixed(2)}%
-              </ThemedText>
+          {isLoading ? (
+            <View style={styles.priceLoadingContainer}>
+              <ActivityIndicator size="large" color={Colors.dark.tint} />
             </View>
-          </View>
+          ) : (
+            <>
+              <ThemedText style={styles.currentPriceText}>
+                ${formatPrice(currentPrice, currentPrice < 1 ? 4 : 2)}
+              </ThemedText>
+              <View style={styles.priceChangeContainer}>
+                <View
+                  style={[
+                    styles.priceChangeBadge,
+                    isPositive ? styles.positiveBadge : styles.negativeBadge,
+                  ]}>
+                  <Ionicons
+                    name={isPositive ? 'trending-up' : 'trending-down'}
+                    size={16}
+                    color={isPositive ? '#00FF88' : '#FF4444'}
+                  />
+                  <ThemedText
+                    style={[
+                      styles.priceChangeText,
+                      isPositive ? styles.positiveChange : styles.negativeChange,
+                    ]}>
+                    {isPositive ? '+' : ''}
+                    {priceChange24h.toFixed(2)}%
+                  </ThemedText>
+                </View>
+                <ThemedText style={styles.priceChangeLabel}>24h</ThemedText>
+              </View>
+            </>
+          )}
         </View>
 
         {/* Stats Cards */}
@@ -595,46 +604,80 @@ const styles = StyleSheet.create({
   },
   priceSection: {
     paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 8,
     marginTop: 20,
     marginBottom: 24,
   },
-  priceRow: {
-    flexDirection: 'row',
+  priceLoadingContainer: {
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
+    paddingVertical: 40,
   },
   currentPriceText: {
-    fontSize: 42,
+    fontSize: 48,
     fontWeight: '700',
     color: '#FFFFFF',
-    letterSpacing: -0.5,
+    letterSpacing: -1,
+    marginTop: 8,
+    marginBottom: 20,
     textShadowColor: 'rgba(0, 0, 0, 0.75)',
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 4,
+    lineHeight: 60,
+    includeFontPadding: false,
+    textAlignVertical: 'center',
+  },
+  priceChangeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 8,
+    marginBottom: 8,
   },
   priceChangeBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    gap: 6,
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 12,
+    borderRadius: 12,
+    gap: 8,
+    minWidth: 100,
+    minHeight: 40,
+    justifyContent: 'center',
   },
   positiveBadge: {
-    backgroundColor: 'rgba(0, 255, 136, 0.15)',
+    backgroundColor: 'rgba(0, 255, 136, 0.2)',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 255, 136, 0.3)',
   },
   negativeBadge: {
-    backgroundColor: 'rgba(255, 68, 68, 0.15)',
+    backgroundColor: 'rgba(255, 68, 68, 0.2)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 68, 68, 0.3)',
   },
   priceChangeText: {
     fontSize: 16,
     fontWeight: '700',
+    letterSpacing: 0.3,
+    lineHeight: 22,
+    includeFontPadding: false,
+    textAlignVertical: 'center',
   },
   positiveChange: {
     color: '#00FF88',
   },
   negativeChange: {
     color: '#FF4444',
+  },
+  priceChangeLabel: {
+    fontSize: 13,
+    color: '#999',
+    fontWeight: '500',
+    lineHeight: 20,
+    includeFontPadding: false,
+    textAlignVertical: 'center',
   },
   statsGrid: {
     flexDirection: 'row',

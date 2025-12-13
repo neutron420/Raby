@@ -619,16 +619,22 @@ const styles = StyleSheet.create({
   },
   assetName: {
     flex: 1,
+    justifyContent: 'center',
+    paddingVertical: 2,
   },
   assetSymbol: {
     fontSize: 17,
     fontWeight: '700',
     color: '#fff',
+    lineHeight: 22,
+    includeFontPadding: false,
   },
   assetNameText: {
     fontSize: 13,
     color: '#A0A0A0',
-    marginTop: 2,
+    marginTop: 4,
+    lineHeight: 18,
+    includeFontPadding: false,
   },
   assetBalance: {
     alignItems: 'flex-end',
@@ -637,21 +643,28 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#fff',
+    lineHeight: 20,
+    includeFontPadding: false,
   },
   assetBalanceToken: {
     fontSize: 13,
     color: '#A0A0A0',
-    marginTop: 2,
+    marginTop: 4,
+    lineHeight: 18,
+    includeFontPadding: false,
   },
   assetPrice: {
-    fontSize: 11,
+    fontSize: 12,
     color: '#666',
-    marginTop: 2,
+    marginTop: 7,
+    lineHeight: 12,
+    includeFontPadding: false,
   },
   priceChangeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 4,
+    marginTop: 6,
+    minHeight: 18,
   },
   trendIcon: {
     marginRight: 4,
@@ -659,6 +672,8 @@ const styles = StyleSheet.create({
   priceChangeText: {
     fontSize: 12,
     fontWeight: '600',
+    lineHeight: 16,
+    includeFontPadding: false,
   },
   positiveChange: {
     color: '#00FF88',

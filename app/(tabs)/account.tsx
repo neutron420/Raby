@@ -1,21 +1,71 @@
 // app/(tabs)/account.tsx
-import React, { useState } from 'react';
-import {
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  View,
-  Alert,
-  ActivityIndicator,
-} from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/theme';
 import { useWallet } from '@/context/wallet-context';
+import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
+import React, { useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+
+interface AccountItemProps {
+  icon: string;
+  title: string;
+  subtitle?: string;
+  onPress: () => void;
+  rightComponent?: React.ReactNode;
+  showChevron?: boolean;
+}
+
+const AccountItem = ({
+  icon,
+  title,
+  subtitle,
+  onPress,
+  rightComponent,
+  showChevron = true,
+}: AccountItemProps) => (
+  <TouchableOpacity
+    style={styles.accountItem}
+    onPress={onPress}
+    activeOpacity={0.7}>
+    <View style={styles.accountItemLeft}>
+      <View style={styles.iconContainer}>
+        <Ionicons
+          name={icon as any}
+          size={22}
+          color={Colors.dark.tint}
+        />
+      </View>
+      <View style={styles.accountItemText}>
+        <ThemedText style={styles.accountItemTitle}>{title}</ThemedText>
+        {subtitle && (
+          <ThemedText style={styles.accountItemSubtitle}>{subtitle}</ThemedText>
+        )}
+      </View>
+    </View>
+    <View style={styles.accountItemRight}>
+      {rightComponent}
+      {showChevron && (
+        <Ionicons
+          name="chevron-forward"
+          size={20}
+          color={Colors.dark.icon}
+          style={styles.chevron}
+        />
+      )}
+    </View>
+  </TouchableOpacity>
+);
 
 export default function AccountScreen() {
   const { address, balance, totalUsdValue, isLoading, cryptoPrices } = useWallet();
@@ -65,9 +115,6 @@ export default function AccountScreen() {
         colors={['#0A0A0A', '#121212']}
         style={styles.headerGradient}>
         <View style={styles.header}>
-          <View style={styles.avatarContainer}>
-            <Ionicons name="person" size={32} color={Colors.dark.tint} />
-          </View>
           <ThemedText style={styles.headerTitle}>Account</ThemedText>
           <ThemedText style={styles.headerSubtitle}>
             Your wallet overview
@@ -80,136 +127,125 @@ export default function AccountScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}>
         {/* Balance Card */}
-        <View style={styles.balanceCard}>
-          <View style={styles.balanceHeader}>
-            <Ionicons name="wallet" size={20} color={Colors.dark.tint} />
-            <ThemedText style={styles.balanceLabel}>Total Balance</ThemedText>
-          </View>
-          {isLoading ? (
-            <ActivityIndicator size="large" color={Colors.dark.tint} style={styles.loader} />
-          ) : (
-            <>
-              <ThemedText style={styles.balanceAmount}>{displayUsdValue}</ThemedText>
-              <ThemedText style={styles.balanceCrypto}>
-                {displayBalance} ETH
-              </ThemedText>
-              {ethPrice && (
-                <ThemedText style={styles.balancePrice}>
-                  1 ETH = ${ethPrice.current_price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        <View style={styles.section}>
+          <ThemedText style={styles.sectionTitle}>Balance</ThemedText>
+          <View style={styles.balanceCard}>
+            {isLoading ? (
+              <ActivityIndicator size="large" color={Colors.dark.tint} style={styles.loader} />
+            ) : (
+              <>
+                <ThemedText style={styles.balanceAmount}>{displayUsdValue}</ThemedText>
+                <ThemedText style={styles.balanceCrypto}>
+                  {displayBalance} ETH
                 </ThemedText>
-              )}
-            </>
-          )}
+                {ethPrice && (
+                  <View style={styles.balancePriceContainer}>
+                    <ThemedText style={styles.balancePrice}>
+                      1 ETH = ${ethPrice.current_price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </ThemedText>
+                  </View>
+                )}
+              </>
+            )}
+          </View>
         </View>
 
-        {/* Address Card */}
+        {/* Wallet Address Section */}
         <View style={styles.section}>
-          <ThemedText style={styles.sectionTitle}>Wallet Address</ThemedText>
-          <View style={styles.addressCard}>
-            <View style={styles.addressHeader}>
-              <Ionicons name="key" size={18} color={Colors.dark.tint} />
-              <ThemedText style={styles.addressLabel}>Your Address</ThemedText>
-            </View>
-            <View style={styles.addressContainer}>
-              <ThemedText style={styles.addressText} numberOfLines={1}>
-                {address || 'No address available'}
-              </ThemedText>
-              <TouchableOpacity
-                style={styles.copyButton}
-                onPress={handleCopyAddress}
-                activeOpacity={0.7}>
-                <Ionicons
-                  name={copied ? 'checkmark' : 'copy'}
-                  size={18}
-                  color={copied ? '#00FF88' : Colors.dark.tint}
-                />
-                <ThemedText
-                  style={[
-                    styles.copyButtonText,
-                    copied && styles.copyButtonTextActive,
-                  ]}>
-                  {copied ? 'Copied!' : 'Copy'}
-                </ThemedText>
-              </TouchableOpacity>
-            </View>
+          <ThemedText style={styles.sectionTitle}>Wallet</ThemedText>
+          <View style={styles.sectionContent}>
+            <AccountItem
+              icon="key"
+              title="Wallet Address"
+              subtitle={address ? formatAddress(address) : 'No address available'}
+              onPress={handleCopyAddress}
+              rightComponent={
+                <TouchableOpacity
+                  onPress={handleCopyAddress}
+                  style={styles.copyButtonSmall}
+                  activeOpacity={0.7}>
+                  <Ionicons
+                    name={copied ? 'checkmark-circle' : 'copy-outline'}
+                    size={20}
+                    color={copied ? '#00FF88' : Colors.dark.tint}
+                  />
+                </TouchableOpacity>
+              }
+              showChevron={false}
+            />
           </View>
         </View>
 
         {/* Quick Actions */}
         <View style={styles.section}>
           <ThemedText style={styles.sectionTitle}>Quick Actions</ThemedText>
-          <View style={styles.actionsGrid}>
-            <TouchableOpacity
-              style={styles.actionCard}
+          <View style={styles.sectionContent}>
+            <AccountItem
+              icon="copy"
+              title="Copy Address"
+              subtitle="Copy your wallet address to clipboard"
               onPress={handleCopyAddress}
-              activeOpacity={0.7}>
-              <View style={[styles.actionIconContainer, { backgroundColor: '#1C3C2C' }]}>
-                <Ionicons name="copy" size={24} color="#00FF88" />
-              </View>
-              <ThemedText style={styles.actionTitle}>Copy Address</ThemedText>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.actionCard}
+            />
+            <AccountItem
+              icon="share"
+              title="Share Address"
+              subtitle="Share your wallet address"
               onPress={handleShareAddress}
-              activeOpacity={0.7}>
-              <View style={[styles.actionIconContainer, { backgroundColor: '#2C2C3C' }]}>
-                <Ionicons name="share" size={24} color={Colors.dark.tint} />
-              </View>
-              <ThemedText style={styles.actionTitle}>Share</ThemedText>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.actionCard}
+            />
+            <AccountItem
+              icon="open-outline"
+              title="View on Explorer"
+              subtitle="Open on Etherscan"
               onPress={handleViewOnExplorer}
-              activeOpacity={0.7}>
-              <View style={[styles.actionIconContainer, { backgroundColor: '#2C3C3C' }]}>
-                <Ionicons name="open-outline" size={24} color={Colors.dark.tint} />
-              </View>
-              <ThemedText style={styles.actionTitle}>Explorer</ThemedText>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.actionCard}
+            />
+            <AccountItem
+              icon="qr-code"
+              title="QR Code"
+              subtitle="Show wallet QR code"
               onPress={() => {
                 Alert.alert('QR Code', 'This feature will be available soon.');
               }}
-              activeOpacity={0.7}>
-              <View style={[styles.actionIconContainer, { backgroundColor: '#3C2C2C' }]}>
-                <Ionicons name="qr-code" size={24} color={Colors.dark.tint} />
-              </View>
-              <ThemedText style={styles.actionTitle}>QR Code</ThemedText>
-            </TouchableOpacity>
+            />
           </View>
         </View>
 
-        {/* Account Info */}
+        {/* Account Information */}
         <View style={styles.section}>
           <ThemedText style={styles.sectionTitle}>Account Information</ThemedText>
-          <View style={styles.infoCard}>
+          <View style={styles.sectionContent}>
             <View style={styles.infoRow}>
-              <ThemedText style={styles.infoLabel}>Network</ThemedText>
+              <View style={styles.infoRowLeft}>
+                <ThemedText style={styles.infoLabel}>Network</ThemedText>
+              </View>
               <ThemedText style={styles.infoValue}>Sepolia Testnet</ThemedText>
             </View>
             <View style={styles.infoDivider} />
             <View style={styles.infoRow}>
-              <ThemedText style={styles.infoLabel}>Account Type</ThemedText>
+              <View style={styles.infoRowLeft}>
+                <ThemedText style={styles.infoLabel}>Account Type</ThemedText>
+              </View>
               <ThemedText style={styles.infoValue}>Standard</ThemedText>
             </View>
             <View style={styles.infoDivider} />
             <View style={styles.infoRow}>
-              <ThemedText style={styles.infoLabel}>Address Format</ThemedText>
+              <View style={styles.infoRowLeft}>
+                <ThemedText style={styles.infoLabel}>Address Format</ThemedText>
+              </View>
               <ThemedText style={styles.infoValue}>Ethereum (EIP-55)</ThemedText>
             </View>
           </View>
         </View>
 
         {/* Security Note */}
-        <View style={styles.securityNote}>
-          <Ionicons name="shield-checkmark" size={20} color={Colors.dark.tint} />
-          <ThemedText style={styles.securityNoteText}>
-            Your wallet is secured with PIN and biometric authentication
-          </ThemedText>
+        <View style={styles.section}>
+          <View style={styles.sectionContent}>
+            <View style={styles.securityNote}>
+              <Ionicons name="shield-checkmark" size={20} color={Colors.dark.tint} />
+              <ThemedText style={styles.securityNoteText}>
+                Your wallet is secured with PIN and biometric authentication
+              </ThemedText>
+            </View>
+          </View>
         </View>
       </ScrollView>
     </ThemedView>
@@ -227,19 +263,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   header: {
-    alignItems: 'center',
     marginTop: 5,
-  },
-  avatarContainer: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: '#1C1C1E',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
-    borderWidth: 2,
-    borderColor: Colors.dark.tint,
   },
   headerTitle: {
     fontSize: 24,
@@ -258,46 +282,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: 30,
   },
-  balanceCard: {
-    backgroundColor: '#1C1C1E',
-    borderRadius: 16,
-    padding: 20,
-    marginHorizontal: 20,
-    marginTop: 16,
-    borderWidth: 1,
-    borderColor: '#2C2C2E',
-  },
-  balanceHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  balanceLabel: {
-    fontSize: 14,
-    color: '#999',
-    marginLeft: 8,
-    fontWeight: '500',
-  },
-  balanceAmount: {
-    fontSize: 36,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    marginBottom: 8,
-  },
-  balanceCrypto: {
-    fontSize: 18,
-    color: Colors.dark.tint,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  balancePrice: {
-    fontSize: 13,
-    color: '#666',
-    marginTop: 8,
-  },
-  loader: {
-    marginVertical: 20,
-  },
   section: {
     marginTop: 20,
     paddingHorizontal: 20,
@@ -311,117 +295,142 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     marginLeft: 4,
   },
-  addressCard: {
+  sectionContent: {
     backgroundColor: '#1C1C1E',
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 14,
+    overflow: 'hidden',
     borderWidth: 1,
     borderColor: '#2C2C2E',
   },
-  addressHeader: {
-    flexDirection: 'row',
+  balanceCard: {
+    backgroundColor: '#1C1C1E',
+    borderRadius: 14,
+    paddingTop: 28,
+    paddingBottom: 28,
+    paddingHorizontal: 20,
+    borderWidth: 1,
+    borderColor: '#2C2C2E',
     alignItems: 'center',
-    marginBottom: 12,
+    minHeight: 200,
+    justifyContent: 'center',
   },
-  addressLabel: {
-    fontSize: 13,
+  balanceAmount: {
+    fontSize: 42,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginTop: 4,
+    marginBottom: 16,
+    letterSpacing: -0.5,
+    lineHeight: 50,
+    includeFontPadding: false,
+    textAlignVertical: 'center',
+  },
+  balanceCrypto: {
+    fontSize: 20,
+    color: Colors.dark.tint,
+    fontWeight: '600',
+    marginBottom: 16,
+    lineHeight: 26,
+    includeFontPadding: false,
+    textAlignVertical: 'center',
+  },
+  balancePriceContainer: {
+    width: '100%',
+    paddingTop: 12,
+    paddingBottom: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  balancePrice: {
+    fontSize: 15,
     color: '#999',
-    marginLeft: 8,
-    fontWeight: '500',
+    textAlign: 'center',
+    lineHeight: 24,
+    includeFontPadding: false,
+    textAlignVertical: 'center',
+    paddingVertical: 4,
   },
-  addressContainer: {
+  loader: {
+    marginVertical: 20,
+  },
+  accountItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#2C2C2E',
   },
-  addressText: {
-    fontSize: 14,
-    color: '#FFFFFF',
-    fontFamily: 'monospace',
+  accountItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
     flex: 1,
-    marginRight: 12,
   },
-  copyButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  iconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
     backgroundColor: '#2C2C2E',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  copyButtonText: {
-    fontSize: 13,
-    color: Colors.dark.tint,
-    fontWeight: '600',
-    marginLeft: 6,
-  },
-  copyButtonTextActive: {
-    color: '#00FF88',
-  },
-  actionsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginHorizontal: -6,
-  },
-  actionCard: {
-    width: '48%',
-    backgroundColor: '#1C1C1E',
-    borderRadius: 16,
-    padding: 20,
-    alignItems: 'center',
-    margin: 6,
-    borderWidth: 1,
-    borderColor: '#2C2C2E',
-  },
-  actionIconContainer: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12,
+    marginRight: 12,
   },
-  actionTitle: {
-    fontSize: 14,
+  accountItemText: {
+    flex: 1,
+  },
+  accountItemTitle: {
+    fontSize: 15,
+    fontWeight: '500',
     color: '#FFFFFF',
-    fontWeight: '600',
+    marginBottom: 2,
   },
-  infoCard: {
-    backgroundColor: '#1C1C1E',
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#2C2C2E',
+  accountItemSubtitle: {
+    fontSize: 12,
+    color: '#999',
+    lineHeight: 16,
+  },
+  accountItemRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  chevron: {
+    marginLeft: 8,
+  },
+  copyButtonSmall: {
+    padding: 4,
+    marginRight: 4,
   },
   infoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+  },
+  infoRowLeft: {
+    flex: 1,
   },
   infoLabel: {
-    fontSize: 14,
+    fontSize: 15,
     color: '#999',
+    fontWeight: '500',
   },
   infoValue: {
-    fontSize: 14,
+    fontSize: 15,
     color: '#FFFFFF',
     fontWeight: '500',
   },
   infoDivider: {
     height: 1,
     backgroundColor: '#2C2C2E',
+    marginLeft: 16,
   },
   securityNote: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1C2C1C',
-    borderRadius: 12,
-    padding: 16,
-    marginHorizontal: 20,
-    marginTop: 24,
-    borderWidth: 1,
-    borderColor: '#2C3C2C',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
   },
   securityNoteText: {
     fontSize: 13,

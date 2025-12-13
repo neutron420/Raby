@@ -1,26 +1,27 @@
 
-import 'react-native-get-random-values'; 
-import React, { useState } from 'react';
-import {
-  StyleSheet,
-  View,
-  TouchableOpacity,
-  ScrollView,
-  Alert,
-  TextInput,
-  ActivityIndicator,
-  Switch,
-} from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/theme';
-import * as SecureStore from 'expo-secure-store';
-import * as Clipboard from 'expo-clipboard';
-import * as Haptics from 'expo-haptics';
-import { ethers } from 'ethers';
 import { useWallet } from '@/context/wallet-context';
+import { Ionicons } from '@expo/vector-icons';
+import { ethers } from 'ethers';
+import * as Clipboard from 'expo-clipboard';
+import * as Crypto from 'expo-crypto';
+import * as Haptics from 'expo-haptics';
+import { useRouter } from 'expo-router';
+import * as SecureStore from 'expo-secure-store';
+import React, { useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import 'react-native-get-random-values';
 
 type Stage = 'password' | 'generate' | 'verify' | 'done';
 
@@ -46,11 +47,16 @@ export default function CreateWalletScreen() {
   const [isPhraseVisible, setIsPhraseVisible] = useState(false);
 
   // --- Mnemonic Generation Function ---
-  const generateMnemonic = () => {
+  const generateMnemonic = async () => {
     setIsGenerating(true);
     try {
-      const wallet = ethers.Wallet.createRandom();
-      const generatedMnemonic = wallet.mnemonic?.phrase;
+      // Use expo-crypto to generate secure random bytes (16 bytes = 128 bits for 12-word mnemonic)
+      const randomBytes = await Crypto.getRandomBytesAsync(16);
+      // Convert to hex string and then to entropy
+      const entropy = ethers.utils.hexlify(randomBytes);
+      // Generate mnemonic from entropy
+      const generatedMnemonic = ethers.utils.entropyToMnemonic(entropy);
+      
       if (!generatedMnemonic) throw new Error('Mnemonic generation failed');
       const words = generatedMnemonic.split(' ');
       setMnemonic(generatedMnemonic);
@@ -68,7 +74,7 @@ export default function CreateWalletScreen() {
   };
 
   // --- Stage Progression Handlers ---
-  const handlePasswordConfirm = () => {
+  const handlePasswordConfirm = async () => {
     if (password.length < 8) {
       Alert.alert('Password Too Short', 'Password must be at least 8 characters.');
       return;
@@ -77,7 +83,7 @@ export default function CreateWalletScreen() {
       Alert.alert("Passwords Don't Match", 'Please re-enter your password confirmation.');
       return;
     }
-    generateMnemonic();
+    await generateMnemonic();
   };
 
   const handlePhraseAcknowledged = () => {
