@@ -4,23 +4,23 @@ import { ThemedView } from '@/components/themed-view';
 import { Colors } from '@/constants/theme';
 import { useWallet } from '@/context/wallet-context';
 import {
-  fetchCryptoPrice,
-  fetchPriceHistory,
-  getCoinGeckoId,
-  type PriceHistoryPoint,
+    fetchCryptoPrice,
+    fetchPriceHistory,
+    getCoinGeckoId,
+    type PriceHistoryPoint,
 } from '@/services/crypto-price-service';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Dimensions,
-  ScrollView,
-  StyleSheet,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Dimensions,
+    ScrollView,
+    StyleSheet,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 
 type TimeRange = '1D' | '7D' | '30D' | '90D' | '1Y';
@@ -504,7 +504,7 @@ export default function CryptoDetailScreen() {
             onPress={() => {
               Alert.alert(
                 'Buy Crypto',
-                `Buy ${symbol} functionality will be implemented soon!`,
+                `Buy ${symbol} with fiat currency\n\nThis will integrate with on-ramp providers to allow purchasing ${symbol} directly in the app.\n\nFeatures:\n• Credit card support\n• Bank transfers\n• Instant deposits\n\nComing soon!`,
                 [{ text: 'OK' }],
               );
             }}
@@ -518,7 +518,7 @@ export default function CryptoDetailScreen() {
             onPress={() => {
               Alert.alert(
                 'Sell Crypto',
-                `Sell ${symbol} functionality will be implemented soon!`,
+                `Sell ${symbol} for fiat currency\n\nThis will integrate with off-ramp providers to allow selling ${symbol} and receiving cash.\n\nFeatures:\n• Bank account transfers\n• Instant cash out\n• Low fees\n\nComing soon!`,
                 [{ text: 'OK' }],
               );
             }}
@@ -532,8 +532,19 @@ export default function CryptoDetailScreen() {
             onPress={() => {
               Alert.alert(
                 'Swap Crypto',
-                `Swap ${symbol} functionality will be implemented soon!`,
-                [{ text: 'OK' }],
+                `Swap ${symbol} for other tokens\n\nThis will use DEX (Decentralized Exchange) integration to swap ${symbol} for other cryptocurrencies.\n\nFeatures:\n• Uniswap/1inch integration\n• Best rate routing\n• Low slippage\n• Gas optimization\n\nComing soon!`,
+                [
+                  { text: 'OK' },
+                  {
+                    text: 'Learn More',
+                    onPress: () => {
+                      Alert.alert(
+                        'About Swaps',
+                        'Token swaps use decentralized exchanges (DEXs) like Uniswap to exchange one cryptocurrency for another. No account needed - swaps happen directly from your wallet.',
+                      );
+                    },
+                  },
+                ],
               );
             }}
             activeOpacity={0.8}>

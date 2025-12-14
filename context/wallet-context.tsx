@@ -1,23 +1,39 @@
 import {
-  fetchMultipleCryptoPrices,
-  getCoinGeckoId,
-  type CryptoPrice,
-  type PriceHistoryPoint
+    getActiveAccount,
+    getAllAccounts,
+    getWalletForAccount,
+    setActiveAccount,
+    type Account,
+} from '@/services/account-service';
+import {
+    fetchMultipleCryptoPrices,
+    getCoinGeckoId,
+    type CryptoPrice,
+    type PriceHistoryPoint
 } from '@/services/crypto-price-service';
+import {
+    getPopularTokenBalances,
+    type TokenInfo,
+} from '@/services/token-service';
+import {
+    fetchTransactionHistory,
+    type Transaction,
+} from '@/services/transaction-service';
 import { ethers } from 'ethers';
 import Constants from 'expo-constants';
 import React, {
-  createContext,
-  ReactNode,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
+    createContext,
+    ReactNode,
+    useCallback,
+    useContext,
+    useEffect,
+    useMemo,
+    useState,
 } from 'react';
 import 'react-native-get-random-values';
 
 const INFURA_API_KEY = Constants.expoConfig?.extra?.INFURA_API_KEY;
+const ETHERSCAN_API_KEY = Constants.expoConfig?.extra?.ETHERSCAN_API_KEY;
 
 if (!INFURA_API_KEY) {
   console.warn(' INFURA_API_KEY not found. Please set it in .env');
@@ -41,9 +57,20 @@ interface WalletState {
   cryptoPriceHistory: Record<string, PriceHistoryPoint[]>;
   totalUsdValue: number;
   isPriceLoading: boolean;
+  transactions: Transaction[];
+  tokenBalances: TokenInfo[];
+  isTransactionsLoading: boolean;
+  isTokensLoading: boolean;
+  accounts: Account[];
+  activeAccount: Account | null;
+  isAccountsLoading: boolean;
   setWallet: (wallet: ethers.Wallet | null) => void;
+  switchAccount: (accountId: string) => Promise<void>;
+  fetchAccounts: () => Promise<void>;
   fetchWalletData: () => void;
   fetchPriceData: () => void;
+  fetchTransactions: () => void;
+  fetchTokenBalances: () => void;
   getCryptoPrice: (symbol: string) => CryptoPrice | null;
   getCryptoPriceHistory: (symbol: string) => PriceHistoryPoint[];
 }
@@ -58,6 +85,13 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
   const [cryptoPrices, setCryptoPrices] = useState<Record<string, CryptoPrice>>({});
   const [cryptoPriceHistory, setCryptoPriceHistory] = useState<Record<string, PriceHistoryPoint[]>>({});
   const [isPriceLoading, setIsPriceLoading] = useState(false);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [tokenBalances, setTokenBalances] = useState<TokenInfo[]>([]);
+  const [isTransactionsLoading, setIsTransactionsLoading] = useState(false);
+  const [isTokensLoading, setIsTokensLoading] = useState(false);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [activeAccount, setActiveAccountState] = useState<Account | null>(null);
+  const [isAccountsLoading, setIsAccountsLoading] = useState(false);
 
   // Supported cryptocurrencies to display
   const SUPPORTED_CRYPTOS = ['BTC', 'ETH', 'USDT', 'USDC', 'BNB', 'SOL', 'XRP', 'ADA', 'DOGE', 'MATIC'];
@@ -80,6 +114,52 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
       console.log(' Wallet cleared');
     }
   };
+
+  // Fetch all accounts
+  const fetchAccounts = useCallback(async () => {
+    setIsAccountsLoading(true);
+    try {
+      const allAccounts = await getAllAccounts();
+      setAccounts(allAccounts);
+      
+      const active = await getActiveAccount();
+      setActiveAccountState(active);
+      
+      // If there's an active account but no wallet, load it
+      if (active && !wallet) {
+        try {
+          const accountWallet = await getWalletForAccount(active);
+          handleSetWallet(accountWallet);
+        } catch (error) {
+          console.error('Error loading wallet for active account:', error);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching accounts:', error);
+    } finally {
+      setIsAccountsLoading(false);
+    }
+  }, [wallet]);
+
+  // Switch to a different account
+  const switchAccount = useCallback(async (accountId: string) => {
+    try {
+      await setActiveAccount(accountId);
+      const account = accounts.find(acc => acc.id === accountId);
+      
+      if (account) {
+        const accountWallet = await getWalletForAccount(account);
+        handleSetWallet(accountWallet);
+        setActiveAccountState(account);
+      }
+      
+      // Refresh accounts list
+      await fetchAccounts();
+    } catch (error) {
+      console.error('Error switching account:', error);
+      throw error;
+    }
+  }, [accounts, fetchAccounts]);
 
   const fetchWalletData = useCallback(async () => {
     if (!wallet || !wallet.provider) return;
@@ -138,6 +218,44 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
     return balanceNum * ethPrice.current_price;
   }, [balance, cryptoPrices]);
 
+  // Fetch transaction history
+  const fetchTransactions = useCallback(async () => {
+    if (!wallet || !wallet.provider || !address) return;
+    setIsTransactionsLoading(true);
+    try {
+      const txs = await fetchTransactionHistory(
+        address,
+        wallet.provider,
+        ETHERSCAN_API_KEY,
+        'sepolia',
+        50
+      );
+      setTransactions(txs);
+      console.log(`Fetched ${txs.length} transactions`);
+    } catch (err) {
+      console.error('Failed to fetch transactions:', err);
+      setTransactions([]);
+    } finally {
+      setIsTransactionsLoading(false);
+    }
+  }, [wallet, address, ETHERSCAN_API_KEY]);
+
+  // Fetch token balances
+  const fetchTokenBalances = useCallback(async () => {
+    if (!wallet || !wallet.provider || !address) return;
+    setIsTokensLoading(true);
+    try {
+      const tokens = await getPopularTokenBalances(address, wallet.provider);
+      setTokenBalances(tokens);
+      console.log(`Fetched ${tokens.length} token balances`);
+    } catch (err) {
+      console.error('Failed to fetch token balances:', err);
+      setTokenBalances([]);
+    } finally {
+      setIsTokensLoading(false);
+    }
+  }, [wallet, address]);
+
   // Helper functions to get price data
   const getCryptoPrice = useCallback((symbol: string): CryptoPrice | null => {
     return cryptoPrices[symbol.toUpperCase()] || null;
@@ -147,6 +265,11 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
     return cryptoPriceHistory[symbol.toUpperCase()] || [];
   }, [cryptoPriceHistory]);
 
+  // Load accounts on mount
+  useEffect(() => {
+    fetchAccounts();
+  }, [fetchAccounts]);
+
   useEffect(() => {
     if (wallet && wallet.provider) {
       // Defer balance and price fetch to not block navigation
@@ -155,9 +278,18 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
         fetchWalletData();
         // Price data can be fetched later, don't block on it
         setTimeout(() => fetchPriceData(), 100);
+        // Fetch transactions and tokens after a short delay
+        setTimeout(() => {
+          fetchTransactions();
+          fetchTokenBalances();
+        }, 500);
       });
+    } else {
+      // Clear data when wallet is cleared
+      setTransactions([]);
+      setTokenBalances([]);
     }
-  }, [wallet, fetchWalletData, fetchPriceData]);
+  }, [wallet, fetchWalletData, fetchPriceData, fetchTransactions, fetchTokenBalances]);
 
   // Refresh price data periodically (every 2 minutes to avoid rate limits)
   useEffect(() => {
@@ -181,9 +313,20 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
         cryptoPriceHistory,
         totalUsdValue,
         isPriceLoading,
+        transactions,
+        tokenBalances,
+        isTransactionsLoading,
+        isTokensLoading,
+        accounts,
+        activeAccount,
+        isAccountsLoading,
         setWallet: handleSetWallet,
+        switchAccount,
+        fetchAccounts,
         fetchWalletData,
         fetchPriceData,
+        fetchTransactions,
+        fetchTokenBalances,
         getCryptoPrice,
         getCryptoPriceHistory,
       }}

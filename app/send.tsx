@@ -1,32 +1,37 @@
 // app/send.tsx
-import React, { useState } from 'react';
-import {
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  View,
-  TextInput,
-  Alert,
-  ActivityIndicator,
-} from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/theme';
 import { useWallet } from '@/context/wallet-context';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { transferToken, type TokenInfo } from '@/services/token-service';
+import { Ionicons } from '@expo/vector-icons';
 import { ethers } from 'ethers';
-import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useState } from 'react';
+import {
+    ActivityIndicator,
+    Alert,
+    ScrollView,
+    StyleSheet,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from 'react-native';
+
+type SendMode = 'eth' | 'token';
 
 export default function SendScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const { wallet, address, balance } = useWallet();
+  const { wallet, address, balance, tokenBalances } = useWallet();
   const [recipientAddress, setRecipientAddress] = useState((params.address as string) || '');
   const [amount, setAmount] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [gasEstimate, setGasEstimate] = useState<string | null>(null);
+  const [sendMode, setSendMode] = useState<SendMode>('eth');
+  const [selectedToken, setSelectedToken] = useState<TokenInfo | null>(null);
 
   // Set address from params if provided
   React.useEffect(() => {
@@ -35,7 +40,11 @@ export default function SendScreen() {
     }
   }, [params.address]);
 
-  const availableBalance = parseFloat(balance || '0');
+  const availableBalance = sendMode === 'eth' 
+    ? parseFloat(balance || '0')
+    : selectedToken 
+      ? parseFloat(selectedToken.balanceFormatted || '0')
+      : 0;
   const amountValue = parseFloat(amount) || 0;
 
   const validateAddress = (addr: string) => {
@@ -43,9 +52,14 @@ export default function SendScreen() {
   };
 
   const handleMaxAmount = () => {
-    // Reserve some ETH for gas (estimate 0.001 ETH)
-    const maxAmount = Math.max(0, availableBalance - 0.001);
-    setAmount(maxAmount.toFixed(6));
+    if (sendMode === 'eth') {
+      // Reserve some ETH for gas (estimate 0.001 ETH)
+      const maxAmount = Math.max(0, availableBalance - 0.001);
+      setAmount(maxAmount.toFixed(6));
+    } else if (selectedToken) {
+      // For tokens, send full balance (gas is paid in ETH)
+      setAmount(selectedToken.balanceFormatted);
+    }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
@@ -101,10 +115,20 @@ export default function SendScreen() {
       return;
     }
 
+    if (sendMode === 'token' && !selectedToken) {
+      Alert.alert('Error', 'Please select a token');
+      return;
+    }
+
+    const assetName = sendMode === 'eth' ? 'ETH' : selectedToken?.symbol || 'Token';
+    const gasInfo = sendMode === 'eth' 
+      ? `\n\nEstimated gas: ${gasEstimate || '0.0001'} ETH`
+      : '\n\nGas will be paid in ETH';
+
     // Confirm transaction
     Alert.alert(
       'Confirm Transaction',
-      `Send ${amount} ETH to ${recipientAddress.slice(0, 8)}...${recipientAddress.slice(-6)}?\n\nEstimated gas: ${gasEstimate || '0.0001'} ETH`,
+      `Send ${amount} ${assetName} to ${recipientAddress.slice(0, 8)}...${recipientAddress.slice(-6)}?${gasInfo}`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -113,13 +137,27 @@ export default function SendScreen() {
           onPress: async () => {
             setIsLoading(true);
             try {
-              const tx = {
-                to: recipientAddress,
-                value: ethers.utils.parseEther(amount),
-              };
+              let transaction: ethers.providers.TransactionResponse;
 
-              // Send transaction
-              const transaction = await wallet.sendTransaction(tx);
+              if (sendMode === 'eth') {
+                // Send ETH
+                const tx = {
+                  to: recipientAddress,
+                  value: ethers.utils.parseEther(amount),
+                };
+                transaction = await wallet.sendTransaction(tx);
+              } else if (selectedToken) {
+                // Send token
+                transaction = await transferToken(
+                  selectedToken.address,
+                  recipientAddress,
+                  amount,
+                  wallet
+                );
+              } else {
+                throw new Error('Invalid send mode');
+              }
+
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
               Alert.alert(
@@ -129,7 +167,7 @@ export default function SendScreen() {
                   {
                     text: 'View on Explorer',
                     onPress: () => {
-                      // In a real app, open Etherscan URL
+                      // In a real app, use Linking.openURL
                       Alert.alert('Explorer', 'This will open in browser');
                     },
                   },
@@ -183,8 +221,43 @@ export default function SendScreen() {
         <View style={styles.balanceCard}>
           <ThemedText style={styles.balanceLabel}>Available Balance</ThemedText>
           <ThemedText style={styles.balanceAmount}>
-            {availableBalance.toFixed(6)} ETH
+            {availableBalance.toFixed(sendMode === 'eth' ? 6 : 4)} {sendMode === 'eth' ? 'ETH' : selectedToken?.symbol || 'Token'}
           </ThemedText>
+        </View>
+
+        {/* Asset Selector */}
+        <View style={styles.section}>
+          <ThemedText style={styles.sectionLabel}>Asset</ThemedText>
+          <View style={styles.assetSelector}>
+            <TouchableOpacity
+              style={[styles.assetOption, sendMode === 'eth' && styles.assetOptionActive]}
+              onPress={() => {
+                setSendMode('eth');
+                setSelectedToken(null);
+                setAmount('');
+              }}>
+              <Ionicons name="diamond-outline" size={20} color={sendMode === 'eth' ? Colors.dark.tint : Colors.dark.icon} />
+              <ThemedText style={[styles.assetOptionText, sendMode === 'eth' && styles.assetOptionTextActive]}>
+                ETH
+              </ThemedText>
+            </TouchableOpacity>
+            
+            {tokenBalances.map((token) => (
+              <TouchableOpacity
+                key={token.address}
+                style={[styles.assetOption, sendMode === 'token' && selectedToken?.address === token.address && styles.assetOptionActive]}
+                onPress={() => {
+                  setSendMode('token');
+                  setSelectedToken(token);
+                  setAmount('');
+                }}>
+                <Ionicons name="cash-outline" size={20} color={sendMode === 'token' && selectedToken?.address === token.address ? Colors.dark.tint : Colors.dark.icon} />
+                <ThemedText style={[styles.assetOptionText, sendMode === 'token' && selectedToken?.address === token.address && styles.assetOptionTextActive]}>
+                  {token.symbol}
+                </ThemedText>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
 
         {/* Recipient Address */}
@@ -250,7 +323,9 @@ export default function SendScreen() {
               keyboardType="decimal-pad"
             />
             <View style={styles.ethBadge}>
-              <ThemedText style={styles.ethBadgeText}>ETH</ThemedText>
+              <ThemedText style={styles.ethBadgeText}>
+                {sendMode === 'eth' ? 'ETH' : selectedToken?.symbol || 'Token'}
+              </ThemedText>
             </View>
           </View>
           {amountValue > 0 && (
@@ -561,6 +636,35 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#999',
     lineHeight: 18,
+  },
+  assetSelector: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 12,
+  },
+  assetOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1C1C1E',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#2C2C2E',
+    gap: 8,
+  },
+  assetOptionActive: {
+    borderColor: Colors.dark.tint,
+    backgroundColor: '#1C2C1C',
+  },
+  assetOptionText: {
+    fontSize: 14,
+    color: Colors.dark.icon,
+    fontWeight: '600',
+  },
+  assetOptionTextActive: {
+    color: Colors.dark.tint,
   },
 });
 

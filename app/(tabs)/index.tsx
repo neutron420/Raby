@@ -4,6 +4,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Colors } from '@/constants/theme';
 import { useWallet } from '@/context/wallet-context';
+import type { Transaction } from '@/services/transaction-service';
 import { Ionicons } from '@expo/vector-icons';
 import { ethers } from 'ethers';
 import * as Clipboard from 'expo-clipboard';
@@ -52,8 +53,17 @@ export default function WalletScreen() {
     cryptoPriceHistory,
     totalUsdValue,
     isPriceLoading,
+    transactions,
+    tokenBalances,
+    accounts,
+    activeAccount,
+    isTransactionsLoading,
+    isTokensLoading,
     fetchWalletData,
     fetchPriceData,
+    fetchTransactions,
+    fetchTokenBalances,
+    fetchAccounts,
     getCryptoPrice,
     getCryptoPriceHistory,
   } = useWallet();
@@ -73,11 +83,21 @@ export default function WalletScreen() {
 
   const renderHeader = () => (
     <View style={styles.headerContainer}>
-      <View style={styles.accountSelector}>
+      <TouchableOpacity
+        style={styles.accountSelector}
+        onPress={() => router.push('/manage-accounts')}
+        activeOpacity={0.7}>
         <Ionicons name="person-circle-outline" size={24} color={Colors.dark.icon} />
-        <ThemedText style={styles.accountName}>Account 1</ThemedText>
+        <ThemedText style={styles.accountName}>
+          {activeAccount?.name || 'Account 1'}
+        </ThemedText>
         <Ionicons name="chevron-down-outline" size={16} color={Colors.dark.icon} />
-      </View>
+        {accounts.length > 1 && (
+          <View style={styles.accountCountBadge}>
+            <ThemedText style={styles.accountCountText}>{accounts.length}</ThemedText>
+          </View>
+        )}
+      </TouchableOpacity>
       <View style={styles.headerIcons}>
         <TouchableOpacity
           onPress={() => router.push('/scan-qr')}
@@ -139,15 +159,40 @@ export default function WalletScreen() {
   };
 
   const handleBuy = () => {
-    Alert.alert('Buy Crypto', 'Buy functionality will be implemented soon!', [{ text: 'OK' }]);
+    Alert.alert(
+      'Buy Crypto',
+      'Buy cryptocurrency with fiat currency (credit card, bank transfer, etc.)\n\nThis feature will integrate with:\n• On-ramp providers (MoonPay, Ramp, etc.)\n• Credit card processing\n• Bank transfers\n\nComing soon!',
+      [{ text: 'OK' }]
+    );
   };
 
   const handleSell = () => {
-    Alert.alert('Sell Crypto', 'Sell functionality will be implemented soon!', [{ text: 'OK' }]);
+    Alert.alert(
+      'Sell Crypto',
+      'Sell cryptocurrency for fiat currency\n\nThis feature will integrate with:\n• Off-ramp providers\n• Bank account transfers\n• Instant cash out\n\nComing soon!',
+      [{ text: 'OK' }]
+    );
   };
 
   const handleSwap = () => {
-    Alert.alert('Swap Crypto', 'Swap functionality will be implemented soon!', [{ text: 'OK' }]);
+    if (!address) {
+      Alert.alert('Error', 'Wallet address not available');
+      return;
+    }
+    
+    Alert.alert(
+      'Swap Crypto',
+      'Swap between different cryptocurrencies\n\nThis feature will support:\n• DEX integration (Uniswap, 1inch, etc.)\n• Token-to-token swaps\n• Best rate routing\n• Gas optimization\n\nComing soon!',
+      [
+        { text: 'OK' },
+        {
+          text: 'Learn More',
+          onPress: () => {
+            Alert.alert('Swap Info', 'Token swaps will use decentralized exchanges (DEXs) to exchange one cryptocurrency for another directly from your wallet.');
+          },
+        },
+      ]
+    );
   };
 
   const handleSend = () => {
@@ -306,75 +351,150 @@ export default function WalletScreen() {
     );
   };
 
+  const renderTokenAsset = (token: typeof tokenBalances[0]) => {
+    const price = getCryptoPrice(token.symbol);
+    const usdValue = price && parseFloat(token.balanceFormatted) > 0
+      ? parseFloat(token.balanceFormatted) * price.current_price
+      : 0;
 
-  const [transactions, setTransactions] = useState<any[]>([]);
-  const [isLoadingTransactions, setIsLoadingTransactions] = useState(false);
+    return (
+      <TouchableOpacity
+        key={token.address}
+        style={styles.assetRow}
+        onPress={() => {
+          Alert.alert(
+            'Token Details',
+            `${token.name} (${token.symbol})\n\nBalance: ${token.balanceFormatted}\nAddress: ${token.address.slice(0, 8)}...${token.address.slice(-6)}`,
+            [{ text: 'OK' }]
+          );
+        }}>
+        <View style={styles.assetIcon}>
+          <Ionicons name="diamond-outline" size={24} color={Colors.dark.tint} />
+        </View>
+        <View style={styles.assetName}>
+          <ThemedText style={styles.assetSymbol}>{token.symbol}</ThemedText>
+          <ThemedText style={styles.assetNameText}>{token.name}</ThemedText>
+        </View>
+        <View style={styles.assetBalance}>
+          <ThemedText style={styles.assetBalanceUsd}>
+            {usdValue > 0
+              ? `$${usdValue.toLocaleString('en-US', {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}`
+              : '$0.00'}
+          </ThemedText>
+          <ThemedText style={styles.assetBalanceToken}>
+            {parseFloat(token.balanceFormatted).toFixed(4)} {token.symbol}
+          </ThemedText>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
 
   // Fetch transactions when Activity tab is active
   React.useEffect(() => {
     if (activeTab === 'activity' && address && wallet?.provider) {
       fetchTransactions();
     }
-  }, [activeTab, address, wallet]);
+  }, [activeTab, address, wallet, fetchTransactions]);
 
-  const fetchTransactions = async () => {
-    if (!address || !wallet?.provider) return;
-    
-    setIsLoadingTransactions(true);
-    try {
-      // For now, we'll show a placeholder
-      // In production, you'd fetch from Etherscan or your backend
-      setTransactions([]);
-    } catch (error) {
-      console.error('Error fetching transactions:', error);
-    } finally {
-      setIsLoadingTransactions(false);
-    }
+  const renderActivityRow = (tx: Transaction, index: number) => {
+    const formatDate = (timestamp: number) => {
+      const date = new Date(timestamp);
+      const now = new Date();
+      const diffMs = now.getTime() - date.getTime();
+      const diffMins = Math.floor(diffMs / 60000);
+      const diffHours = Math.floor(diffMs / 3600000);
+      const diffDays = Math.floor(diffMs / 86400000);
+
+      if (diffMins < 1) return 'Just now';
+      if (diffMins < 60) return `${diffMins}m ago`;
+      if (diffHours < 24) return `${diffHours}h ago`;
+      if (diffDays < 7) return `${diffDays}d ago`;
+      return date.toLocaleDateString();
+    };
+
+    const formatValue = (tx: Transaction) => {
+      if (tx.isTokenTransfer && tx.tokenValue && tx.tokenSymbol) {
+        const decimals = tx.tokenSymbol === 'USDT' || tx.tokenSymbol === 'USDC' ? 6 : 18;
+        const value = ethers.utils.formatUnits(tx.tokenValue, decimals);
+        return `${parseFloat(value).toFixed(4)} ${tx.tokenSymbol}`;
+      }
+      const ethValue = parseFloat(ethers.utils.formatEther(tx.value || '0'));
+      return `${ethValue.toFixed(4)} ETH`;
+    };
+
+    return (
+      <TouchableOpacity
+        key={tx.hash}
+        style={styles.activityRow}
+        onPress={() => {
+          const explorerUrl = `https://sepolia.etherscan.io/tx/${tx.hash}`;
+          Alert.alert(
+            'Transaction Details',
+            `Hash: ${tx.hash.slice(0, 10)}...${tx.hash.slice(-8)}\n\nStatus: ${tx.status}\nBlock: ${tx.blockNumber}\n\nView on Etherscan?`,
+            [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'View on Explorer',
+                onPress: () => {
+                  // In a real app, use Linking.openURL(explorerUrl)
+                  Alert.alert('Explorer', `Would open: ${explorerUrl}`);
+                },
+              },
+            ]
+          );
+        }}>
+        <View style={styles.activityIconContainer}>
+          <Ionicons
+            name={tx.direction === 'sent' ? 'arrow-up' : 'arrow-down'}
+            size={20}
+            color={tx.direction === 'sent' ? '#FF4444' : '#00FF88'}
+          />
+        </View>
+        <View style={styles.activityContent}>
+          <ThemedText style={styles.activityType}>
+            {tx.isTokenTransfer
+              ? `${tx.direction === 'sent' ? 'Sent' : 'Received'} ${tx.tokenSymbol || 'Token'}`
+              : tx.direction === 'sent'
+              ? 'Sent ETH'
+              : 'Received ETH'}
+          </ThemedText>
+          <ThemedText style={styles.activityAddress} numberOfLines={1}>
+            {tx.direction === 'sent'
+              ? `To: ${tx.to?.slice(0, 8)}...${tx.to?.slice(-6)}`
+              : `From: ${tx.from?.slice(0, 8)}...${tx.from?.slice(-6)}`}
+          </ThemedText>
+          <ThemedText style={styles.activityTime}>
+            {formatDate(tx.timestamp)}
+          </ThemedText>
+        </View>
+        <View style={styles.activityAmount}>
+          <ThemedText
+            style={[
+              styles.activityAmountText,
+              tx.direction === 'sent' ? styles.activityAmountSent : styles.activityAmountReceived,
+            ]}>
+            {tx.direction === 'sent' ? '-' : '+'}
+            {formatValue(tx)}
+          </ThemedText>
+          <ThemedText
+            style={[
+              styles.activityStatus,
+              tx.status === 'confirmed' && styles.activityStatusConfirmed,
+              tx.status === 'failed' && styles.activityStatusFailed,
+            ]}>
+            {tx.status === 'confirmed' ? 'Confirmed' : tx.status === 'pending' ? 'Pending' : 'Failed'}
+          </ThemedText>
+        </View>
+      </TouchableOpacity>
+    );
   };
 
-  const renderActivityRow = (tx: any, index: number) => (
-    <TouchableOpacity
-      key={index}
-      style={styles.activityRow}
-      onPress={() => {
-        Alert.alert('Transaction', `Hash: ${tx.hash}`, [{ text: 'OK' }]);
-      }}>
-      <View style={styles.activityIconContainer}>
-        <Ionicons
-          name={tx.direction === 'sent' ? 'arrow-up' : 'arrow-down'}
-          size={20}
-          color={tx.direction === 'sent' ? '#FF4444' : '#00FF88'}
-        />
-      </View>
-      <View style={styles.activityContent}>
-        <ThemedText style={styles.activityType}>
-          {tx.direction === 'sent' ? 'Sent' : 'Received'}
-        </ThemedText>
-        <ThemedText style={styles.activityAddress} numberOfLines={1}>
-          {tx.direction === 'sent' ? `To: ${tx.to?.slice(0, 8)}...` : `From: ${tx.from?.slice(0, 8)}...`}
-        </ThemedText>
-        <ThemedText style={styles.activityTime}>
-          {new Date(tx.timestamp).toLocaleDateString()}
-        </ThemedText>
-      </View>
-      <View style={styles.activityAmount}>
-        <ThemedText
-          style={[
-            styles.activityAmountText,
-            tx.direction === 'sent' ? styles.activityAmountSent : styles.activityAmountReceived,
-          ]}>
-          {tx.direction === 'sent' ? '-' : '+'}
-          {parseFloat(ethers.utils.formatEther(tx.value || '0')).toFixed(4)} ETH
-        </ThemedText>
-        <ThemedText style={styles.activityStatus}>
-          {tx.status === 'confirmed' ? 'Confirmed' : tx.status === 'pending' ? 'Pending' : 'Failed'}
-        </ThemedText>
-      </View>
-    </TouchableOpacity>
-  );
-
   const renderActivityContent = () => {
-    if (isLoadingTransactions) {
+    if (isTransactionsLoading) {
       return (
         <View style={styles.placeholderContainer}>
           <ActivityIndicator size="large" color={Colors.dark.tint} />
@@ -391,6 +511,14 @@ export default function WalletScreen() {
           <ThemedText style={styles.placeholderSubtext}>
             Your transaction history will appear here
           </ThemedText>
+          {address && (
+            <TouchableOpacity
+              style={styles.refreshButton}
+              onPress={fetchTransactions}>
+              <Ionicons name="refresh" size={16} color={Colors.dark.tint} />
+              <ThemedText style={styles.refreshButtonText}>Refresh</ThemedText>
+            </TouchableOpacity>
+          )}
         </View>
       );
     }
@@ -405,10 +533,16 @@ export default function WalletScreen() {
         // NEW: Added pull-to-refresh
         refreshControl={
           <RefreshControl
-            refreshing={isLoading || isPriceLoading}
+            refreshing={isLoading || isPriceLoading || isTransactionsLoading || isTokensLoading}
             onRefresh={() => {
+              fetchAccounts();
               fetchWalletData();
               fetchPriceData();
+              if (activeTab === 'activity') {
+                fetchTransactions();
+              } else if (activeTab === 'assets') {
+                fetchTokenBalances();
+              }
             }}
             tintColor={Colors.dark.tint} // For iOS
           />
@@ -440,8 +574,28 @@ export default function WalletScreen() {
         <View style={styles.listContainer}>
           {activeTab === 'assets' ? (
             <>
+              {/* Show ETH and other cryptos */}
               {filteredCryptos.length > 0 ? (
-                filteredCryptos.map(renderCryptoAsset)
+                <>
+                  {filteredCryptos.map(renderCryptoAsset)}
+                  
+                  {/* Show token balances if available */}
+                  {tokenBalances.length > 0 && (
+                    <>
+                      <View style={styles.sectionDivider}>
+                        <ThemedText style={styles.sectionDividerText}>Tokens</ThemedText>
+                      </View>
+                      {tokenBalances.map(renderTokenAsset)}
+                    </>
+                  )}
+                  
+                  {isTokensLoading && (
+                    <View style={styles.loadingTokensContainer}>
+                      <ActivityIndicator size="small" color={Colors.dark.tint} />
+                      <ThemedText style={styles.loadingTokensText}>Loading tokens...</ThemedText>
+                    </View>
+                  )}
+                </>
               ) : (
                 <View style={styles.noResultsContainer}>
                   <Ionicons name="search-outline" size={48} color={Colors.dark.icon} />
@@ -493,6 +647,20 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginHorizontal: 8,
     color: '#fff',
+  },
+  accountCountBadge: {
+    backgroundColor: Colors.dark.tint,
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginLeft: 4,
+    minWidth: 20,
+    alignItems: 'center',
+  },
+  accountCountText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#000000',
   },
   headerIcons: {
     flexDirection: 'row',
@@ -750,6 +918,27 @@ const styles = StyleSheet.create({
     color: '#666',
     textTransform: 'uppercase',
   },
+  activityStatusConfirmed: {
+    color: '#00FF88',
+  },
+  activityStatusFailed: {
+    color: '#FF4444',
+  },
+  refreshButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: '#2C2C2E',
+    borderRadius: 8,
+    gap: 6,
+  },
+  refreshButtonText: {
+    fontSize: 14,
+    color: Colors.dark.tint,
+    fontWeight: '600',
+  },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -789,5 +978,30 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontSize: 14,
     color: '#888',
+  },
+  sectionDivider: {
+    marginTop: 24,
+    marginBottom: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#2A2A2D',
+  },
+  sectionDividerText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#999',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  loadingTokensContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 20,
+    gap: 8,
+  },
+  loadingTokensText: {
+    fontSize: 14,
+    color: '#999',
   },
 });
