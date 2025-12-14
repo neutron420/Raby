@@ -7,14 +7,15 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  ScrollView,
-  StyleSheet,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    ScrollView,
+    StyleSheet,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 
 interface AccountItemProps {
@@ -68,6 +69,7 @@ const AccountItem = ({
 );
 
 export default function AccountScreen() {
+  const router = useRouter();
   const { address, balance, totalUsdValue, isLoading, cryptoPrices } = useWallet();
   const [copied, setCopied] = useState(false);
 
@@ -180,6 +182,12 @@ export default function AccountScreen() {
         <View style={styles.section}>
           <ThemedText style={styles.sectionTitle}>Quick Actions</ThemedText>
           <View style={styles.sectionContent}>
+            <AccountItem
+              icon="people"
+              title="Manage Accounts"
+              subtitle="Add, switch, or remove accounts"
+              onPress={() => router.push('/manage-accounts')}
+            />
             <AccountItem
               icon="copy"
               title="Copy Address"

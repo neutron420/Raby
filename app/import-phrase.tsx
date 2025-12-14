@@ -1,22 +1,23 @@
 // app/import-phrase.tsx
-import 'react-native-get-random-values';
-import React, { useState } from 'react';
-import {
-  StyleSheet,
-  TouchableOpacity,
-  TextInput,
-  ScrollView,
-  Alert,
-  ActivityIndicator,
-} from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/theme';
-import * as SecureStore from 'expo-secure-store';
-import { ethers } from 'ethers'; // Should be ethers v5
 import { useWallet } from '@/context/wallet-context'; // UPDATED: Import the hook
+import { initializeFirstAccount } from '@/services/account-service';
+import { Ionicons } from '@expo/vector-icons';
+import { ethers } from 'ethers'; // Should be ethers v5
+import { useRouter } from 'expo-router';
+import * as SecureStore from 'expo-secure-store';
+import React, { useState } from 'react';
+import {
+    ActivityIndicator,
+    Alert,
+    ScrollView,
+    StyleSheet,
+    TextInput,
+    TouchableOpacity,
+} from 'react-native';
+import 'react-native-get-random-values';
 
 export default function ImportPhraseScreen() {
   const router = useRouter();
@@ -70,6 +71,9 @@ export default function ImportPhraseScreen() {
         importedPrivateKey,
       );
       await SecureStore.setItemAsync('walletExists', 'true');
+
+      // Initialize first account
+      await initializeFirstAccount(wallet, 'Account 1');
 
       // UPDATED: Set wallet in context
       setWallet(wallet); // This line sends the wallet to the global state

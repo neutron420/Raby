@@ -3,6 +3,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Colors } from '@/constants/theme';
 import { useWallet } from '@/context/wallet-context';
+import { initializeFirstAccount } from '@/services/account-service';
 import { Ionicons } from '@expo/vector-icons';
 import { ethers } from 'ethers';
 import * as Clipboard from 'expo-clipboard';
@@ -12,14 +13,14 @@ import { useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import React, { useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    ScrollView,
+    StyleSheet,
+    Switch,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import 'react-native-get-random-values';
 
@@ -104,6 +105,10 @@ export default function CreateWalletScreen() {
         await SecureStore.setItemAsync('walletExists', 'true');
         
         const newWallet = ethers.Wallet.fromMnemonic(mnemonic || '');
+        
+        // Initialize first account
+        await initializeFirstAccount(newWallet, 'Account 1');
+        
         setWallet(newWallet);
 
         Alert.alert(
