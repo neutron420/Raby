@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "./dist",
+
+    // Node backend environment
+    "module": "commonjs",
+    "target": "es2020",
+    "moduleResolution": "node",
+    "types": ["node"],
+
+    // Interop so `import express from 'express'` works with CommonJS
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+
+    // Outputs
+    "sourceMap": true,
+
+    // Type checking
+    "strict": true,
+
+    // Performance / compatibility
+    "skipLibCheck": true
+  },
+  "include": ["src"]
+}
