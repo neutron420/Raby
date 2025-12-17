@@ -5,6 +5,7 @@ import { Colors } from '@/constants/theme';
 import { useWallet } from '@/context/wallet-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
+import Constants from 'expo-constants';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { useRouter } from 'expo-router';
@@ -18,6 +19,10 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+
+const CURRENCY_OPTIONS = ['USD', 'EUR', 'INR'] as const;
+const THEME_OPTIONS = ['system', 'light', 'dark'] as const;
+const GAS_OPTIONS = ['slow', 'medium', 'fast'] as const;
 
 interface SettingItemProps {
   icon: string;
@@ -77,6 +82,15 @@ export default function SettingsScreen() {
   const [pinIsSet, setPinIsSet] = useState(false);
   const [biometricsEnabled, setBiometricsEnabled] = useState(false);
   const [biometricsAvailable, setBiometricsAvailable] = useState(false);
+  const [deviceId, setDeviceId] = useState<string | null>(null);
+  const [preferredCurrency, setPreferredCurrency] = useState<(typeof CURRENCY_OPTIONS)[number]>('USD');
+  const [themePreference, setThemePreference] = useState<(typeof THEME_OPTIONS)[number]>('system');
+  const [defaultGasLevel, setDefaultGasLevel] = useState<(typeof GAS_OPTIONS)[number]>('medium');
+
+  const BACKEND_URL =
+    process.env.EXPO_PUBLIC_BACKEND_URL ||
+    (Constants.expoConfig?.extra as any)?.BACKEND_URL ||
+    'http://localhost:4000';
 
   useEffect(() => {
     const checkSettings = async () => {
@@ -88,8 +102,49 @@ export default function SettingsScreen() {
       ]);
 
       setPinIsSet(!!pinHash);
-      setBiometricsEnabled(bioPref === 'true');
+      const localBiometrics = bioPref === 'true';
+      setBiometricsEnabled(localBiometrics);
       setBiometricsAvailable(hasHardware && isEnrolled && !!pinHash);
+
+      // Ensure we have a stable deviceId for backend preferences/contacts
+      let storedDeviceId = await SecureStore.getItemAsync('deviceId');
+      if (!storedDeviceId) {
+        storedDeviceId = `device_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        await SecureStore.setItemAsync('deviceId', storedDeviceId);
+      }
+      setDeviceId(storedDeviceId);
+
+      // Sync biometrics preference with backend UserPreferences
+      if (BACKEND_URL && storedDeviceId) {
+        try {
+          const res = await fetch(
+            `${BACKEND_URL.replace(/\/$/, '')}/api/preferences/${encodeURIComponent(
+              storedDeviceId,
+            )}`,
+          );
+          if (res.ok) {
+            const prefs = await res.json();
+            if (typeof prefs.biometricsEnabled === 'boolean') {
+              setBiometricsEnabled(prefs.biometricsEnabled);
+              await SecureStore.setItemAsync(
+                'biometricsEnabled',
+                String(prefs.biometricsEnabled),
+              );
+            }
+            if (prefs.preferredCurrency) {
+              setPreferredCurrency(prefs.preferredCurrency);
+            }
+            if (prefs.themePreference) {
+              setThemePreference(prefs.themePreference);
+            }
+            if (prefs.defaultGasLevel) {
+              setDefaultGasLevel(prefs.defaultGasLevel);
+            }
+          }
+        } catch (error) {
+          console.error('Failed to load preferences from backend:', error);
+        }
+      }
     };
     checkSettings();
   }, []);
@@ -123,6 +178,84 @@ export default function SettingsScreen() {
 
     await SecureStore.setItemAsync('biometricsEnabled', String(value));
     setBiometricsEnabled(value);
+
+    // Persist preference to backend
+    if (BACKEND_URL && deviceId) {
+      try {
+        await fetch(
+          `${BACKEND_URL.replace(/\/$/, '')}/api/preferences/${encodeURIComponent(deviceId)}`,
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ biometricsEnabled: value }),
+          },
+        );
+      } catch (error) {
+        console.error('Failed to update preferences on backend:', error);
+      }
+    }
+  };
+
+  const savePreferences = async (data: Partial<{
+    preferredCurrency: string;
+    themePreference: string;
+    defaultGasLevel: string;
+  }>) => {
+    if (!deviceId || !BACKEND_URL) return;
+    try {
+      await fetch(
+        `${BACKEND_URL.replace(/\/$/, '')}/api/preferences/${encodeURIComponent(deviceId)}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        },
+      );
+    } catch (error) {
+      console.error('Failed to update preferences on backend:', error);
+    }
+  };
+
+  const handleSelectCurrency = () => {
+    Alert.alert(
+      'Preferred Currency',
+      'Select your preferred currency',
+      CURRENCY_OPTIONS.map((option) => ({
+        text: option,
+        onPress: () => {
+          setPreferredCurrency(option);
+          savePreferences({ preferredCurrency: option });
+        },
+      })),
+    );
+  };
+
+  const handleSelectTheme = () => {
+    Alert.alert(
+      'Theme Preference',
+      'Select theme',
+      THEME_OPTIONS.map((option) => ({
+        text: option,
+        onPress: () => {
+          setThemePreference(option);
+          savePreferences({ themePreference: option });
+        },
+      })),
+    );
+  };
+
+  const handleSelectGas = () => {
+    Alert.alert(
+      'Default Gas Level',
+      'Select default gas level',
+      GAS_OPTIONS.map((option) => ({
+        text: option,
+        onPress: () => {
+          setDefaultGasLevel(option);
+          savePreferences({ defaultGasLevel: option });
+        },
+      })),
+    );
   };
 
   const navigateToPinSetup = () => {
@@ -244,6 +377,46 @@ export default function SettingsScreen() {
                   'This feature will be available soon.',
                 );
               }}
+            />
+          </View>
+        </View>
+
+        {/* Preferences Section */}
+        <View style={styles.section}>
+          <ThemedText style={styles.sectionTitle}>Preferences</ThemedText>
+          <View style={styles.sectionContent}>
+            <SettingItem
+              icon="cash"
+              title="Preferred Currency"
+              subtitle="Choose display currency"
+              onPress={handleSelectCurrency}
+              rightComponent={
+                <View style={styles.valuePill}>
+                  <ThemedText style={styles.valuePillText}>{preferredCurrency}</ThemedText>
+                </View>
+              }
+            />
+            <SettingItem
+              icon="color-palette"
+              title="Theme"
+              subtitle="Light / Dark / System"
+              onPress={handleSelectTheme}
+              rightComponent={
+                <View style={styles.valuePill}>
+                  <ThemedText style={styles.valuePillText}>{themePreference}</ThemedText>
+                </View>
+              }
+            />
+            <SettingItem
+              icon="speedometer"
+              title="Default Gas"
+              subtitle="Slow / Medium / Fast"
+              onPress={handleSelectGas}
+              rightComponent={
+                <View style={styles.valuePill}>
+                  <ThemedText style={styles.valuePillText}>{defaultGasLevel}</ThemedText>
+                </View>
+              }
             />
           </View>
         </View>
@@ -440,6 +613,19 @@ const styles = StyleSheet.create({
   },
   chevron: {
     marginLeft: 8,
+  },
+  valuePill: {
+    backgroundColor: '#2C2C2E',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#3A3A3C',
+  },
+  valuePillText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+    textTransform: 'uppercase',
   },
   footer: {
     alignItems: 'center',

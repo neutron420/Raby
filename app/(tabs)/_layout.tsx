@@ -1,9 +1,9 @@
 // app/(tabs)/_layout.tsx
-import { Tabs } from 'expo-router';
-import React from 'react';
 import { TabBarIcon } from '@/components/navigation/TabBarIcon';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { Tabs } from 'expo-router';
+import React from 'react';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
@@ -25,6 +25,15 @@ export default function TabLayout() {
           title: 'Wallet',
           tabBarIcon: ({ color, focused }) => (
             <TabBarIcon name={focused ? 'wallet' : 'wallet-outline'} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="contacts"
+        options={{
+          title: 'Contacts',
+          tabBarIcon: ({ color, focused }) => (
+            <TabBarIcon name={focused ? 'people' : 'people-outline'} color={color} />
           ),
         }}
       />

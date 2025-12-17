@@ -2,9 +2,10 @@ import 'dotenv/config';
 import { defineConfig } from "prisma/config";
 
 export default defineConfig({
-  schema: "prisma/schema.prisma",
+  // Prisma folder was moved under backend/
+  schema: "backend/prisma/schema.prisma",
   migrations: {
-    path: "prisma/migrations",
+    path: "backend/prisma/migrations",
   },
   engine: "classic",
   datasource: {

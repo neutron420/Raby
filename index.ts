@@ -7,7 +7,7 @@ if (typeof globalThis.crypto === 'undefined' || typeof globalThis.crypto.getRand
     for (let i = 0; i < arr.length; i++) {
       arr[i] = Math.floor(Math.random() * 256);
     }
-    console.warn('⚠️ Using insecure random fallback (for dev only)');
+    console.warn(' Using insecure random fallback (for dev only)');
     return arr;
   };
   globalThis.crypto = { getRandomValues } as Crypto;

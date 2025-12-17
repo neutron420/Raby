@@ -2,6 +2,7 @@
 // Service to manage multiple accounts/wallets
 
 import { ethers } from 'ethers';
+import Constants from 'expo-constants';
 import * as SecureStore from 'expo-secure-store';
 
 export interface Account {
@@ -12,11 +13,72 @@ export interface Account {
   derivationPath: string;
   isActive: boolean;
   createdAt: number;
+  deviceId?: string;
 }
 
 const ACCOUNTS_STORAGE_KEY = 'walletAccounts';
 const ACTIVE_ACCOUNT_KEY = 'activeAccountId';
 const DEFAULT_DERIVATION_PATH = "m/44'/60'/0'/0"; // Standard Ethereum derivation path
+const DEVICE_ID_KEY = 'deviceId';
+
+const BACKEND_URL =
+  process.env.EXPO_PUBLIC_BACKEND_URL ||
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (Constants.expoConfig?.extra as any)?.BACKEND_URL ||
+  'http://localhost:4000';
+
+async function getOrCreateDeviceId(): Promise<string> {
+  let deviceId = await SecureStore.getItemAsync(DEVICE_ID_KEY);
+  if (!deviceId) {
+    deviceId = `device_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    await SecureStore.setItemAsync(DEVICE_ID_KEY, deviceId);
+  }
+  return deviceId;
+}
+
+async function syncAccountToBackend(account: Account): Promise<void> {
+  if (!BACKEND_URL) return;
+  try {
+    const deviceId = await getOrCreateDeviceId();
+    const payload = {
+      ...account,
+      deviceId,
+      createdAt: new Date(account.createdAt).toISOString(),
+    };
+    await fetch(`${BACKEND_URL.replace(/\/$/, '')}/api/accounts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).catch(() => null);
+  } catch (error) {
+    console.error('Failed to sync account to backend:', error);
+  }
+}
+
+async function markActiveOnBackend(accountId: string): Promise<void> {
+  if (!BACKEND_URL) return;
+  try {
+    const deviceId = await getOrCreateDeviceId();
+    await fetch(`${BACKEND_URL.replace(/\/$/, '')}/api/accounts/${encodeURIComponent(accountId)}/active`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceId }),
+    }).catch(() => null);
+  } catch (error) {
+    console.error('Failed to set active account on backend:', error);
+  }
+}
+
+async function deleteOnBackend(accountId: string): Promise<void> {
+  if (!BACKEND_URL) return;
+  try {
+    await fetch(`${BACKEND_URL.replace(/\/$/, '')}/api/accounts/${encodeURIComponent(accountId)}`, {
+      method: 'DELETE',
+    }).catch(() => null);
+  } catch (error) {
+    console.error('Failed to delete account on backend:', error);
+  }
+}
 
 /**
  * Get all accounts from storage
@@ -70,6 +132,7 @@ export async function setActiveAccount(accountId: string): Promise<void> {
       isActive: acc.id === accountId,
     }));
     await saveAccounts(updatedAccounts);
+    await markActiveOnBackend(accountId);
   } catch (error) {
     console.error('Error setting active account:', error);
     throw error;
@@ -110,6 +173,7 @@ export async function createAccountFromMnemonic(
     const accounts = await getAllAccounts();
     accounts.push(account);
     await saveAccounts(accounts);
+    await syncAccountToBackend(account);
 
     return account;
   } catch (error) {
@@ -142,6 +206,7 @@ export async function createAccountFromPrivateKey(
     const accounts = await getAllAccounts();
     accounts.push(account);
     await saveAccounts(accounts);
+    await syncAccountToBackend(account);
 
     return account;
   } catch (error) {
@@ -217,6 +282,7 @@ export async function deleteAccount(accountId: string): Promise<void> {
     }
     
     await saveAccounts(filtered);
+    await deleteOnBackend(accountId);
     
     // Also delete private key if it's a private key account
     try {
@@ -240,6 +306,17 @@ export async function updateAccountName(accountId: string, newName: string): Pro
       acc.id === accountId ? { ...acc, name: newName } : acc
     );
     await saveAccounts(updated);
+    if (BACKEND_URL) {
+      try {
+        await fetch(`${BACKEND_URL.replace(/\/$/, '')}/api/accounts/${encodeURIComponent(accountId)}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: newName }),
+        }).catch(() => null);
+      } catch (error) {
+        console.error('Failed to update account name on backend:', error);
+      }
+    }
   } catch (error) {
     console.error('Error updating account name:', error);
     throw error;
@@ -294,6 +371,7 @@ export async function initializeFirstAccount(
     existingAccounts.push(account);
     await saveAccounts(existingAccounts);
     await setActiveAccount(account.id);
+    await syncAccountToBackend({ ...account, isActive: true });
 
     return account;
   } catch (error) {

@@ -1,5 +1,8 @@
 import * as dotenv from 'dotenv';
-dotenv.config();
+import path from 'path';
+
+// Load env from backend/.env explicitly so CWD doesn't matter
+dotenv.config({ path: path.join(__dirname, '..', '.env') }); // MUST BE FIRST
 
 import cors from 'cors';
 import express from 'express';
@@ -252,6 +255,136 @@ app.delete('/api/contacts/:id', async (req: express.Request, res: express.Respon
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Backend running on http://localhost:${PORT}`);
+// --- Accounts ---
+// Get accounts for a device
+app.get('/api/accounts', async (req: express.Request, res: express.Response) => {
+  try {
+    const { deviceId } = req.query;
+    if (!deviceId || typeof deviceId !== 'string') {
+      return res.status(400).json({ error: 'deviceId is required' });
+    }
+
+    const accounts = await prisma.account.findMany({
+      where: { deviceId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    res.json(accounts);
+  } catch (err) {
+    console.error('GET /api/accounts error', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
+
+// Create or update an account (metadata only; keys stay on device)
+app.post('/api/accounts', async (req: express.Request, res: express.Response) => {
+  try {
+    const data = req.body;
+    if (!data?.deviceId || !data?.address || !data?.name) {
+      return res.status(400).json({ error: 'deviceId, address, name are required' });
+    }
+
+    const account = await prisma.account.upsert({
+      where: { id: data.id ?? '' },
+      update: {
+        deviceId: data.deviceId,
+        name: data.name,
+        address: data.address,
+        derivationIndex: data.derivationIndex ?? 0,
+        derivationPath: data.derivationPath ?? '',
+        isActive: Boolean(data.isActive),
+        updatedAt: new Date(),
+      },
+      create: {
+        id: data.id, // allow client-provided id to keep in sync with local storage
+        deviceId: data.deviceId,
+        name: data.name,
+        address: data.address,
+        derivationIndex: data.derivationIndex ?? 0,
+        derivationPath: data.derivationPath ?? '',
+        isActive: Boolean(data.isActive),
+      },
+    });
+
+    res.status(201).json(account);
+  } catch (err) {
+    console.error('POST /api/accounts error', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Update account metadata
+app.put('/api/accounts/:id', async (req: express.Request, res: express.Response) => {
+  try {
+    const { id } = req.params;
+    const data = req.body;
+
+    if (!id) {
+      return res.status(400).json({ error: 'id is required' });
+    }
+
+    const account = await prisma.account.update({
+      where: { id },
+      data: {
+        name: data.name ?? undefined,
+        isActive: typeof data.isActive === 'boolean' ? data.isActive : undefined,
+        updatedAt: new Date(),
+      },
+    });
+
+    res.json(account);
+  } catch (err) {
+    console.error('PUT /api/accounts/:id error', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Set active account for device (marks others inactive)
+app.put('/api/accounts/:id/active', async (req: express.Request, res: express.Response) => {
+  try {
+    const { id } = req.params;
+    const { deviceId } = req.body;
+    if (!id || !deviceId) {
+      return res.status(400).json({ error: 'id and deviceId are required' });
+    }
+
+    // Mark all as inactive for device, then set this one active
+    await prisma.account.updateMany({
+      where: { deviceId },
+      data: { isActive: false },
+    });
+
+    const account = await prisma.account.update({
+      where: { id },
+      data: { isActive: true, updatedAt: new Date() },
+    });
+
+    res.json(account);
+  } catch (err) {
+    console.error('PUT /api/accounts/:id/active error', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Delete an account
+app.delete('/api/accounts/:id', async (req: express.Request, res: express.Response) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ error: 'id is required' });
+    }
+
+    await prisma.account.delete({ where: { id } });
+    res.status(204).send();
+  } catch (err) {
+    console.error('DELETE /api/accounts/:id error', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+const port = typeof PORT === 'string' ? parseInt(PORT, 10) : PORT;
+app.listen(port, '0.0.0.0', () => {
+  console.log(`Backend running on port ${port}`);
+});
+
+console.log('DATABASE_URL exists:', Boolean(process.env.DATABASE_URL));

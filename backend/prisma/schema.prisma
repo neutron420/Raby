@@ -6,8 +6,8 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
+
 
 
 model TransactionCache {
@@ -95,4 +95,20 @@ model Contact {
   @@unique([deviceId, address, networkId])
   @@index([deviceId])
   @@index([address])
+}
+
+// Accounts metadata (keys stay local; metadata synced to backend)
+model Account {
+  id              String   @id @default(uuid())
+  deviceId        String
+  name            String
+  address         String
+  derivationIndex Int
+  derivationPath  String
+  isActive        Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([deviceId, address])
+  @@index([deviceId])
 }

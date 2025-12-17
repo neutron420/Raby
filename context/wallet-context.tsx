@@ -9,7 +9,7 @@ import {
     fetchMultipleCryptoPrices,
     getCoinGeckoId,
     type CryptoPrice,
-    type PriceHistoryPoint
+    type PriceHistoryPoint,
 } from '@/services/crypto-price-service';
 import {
     getPopularTokenBalances,
@@ -34,6 +34,13 @@ import 'react-native-get-random-values';
 
 const INFURA_API_KEY = Constants.expoConfig?.extra?.INFURA_API_KEY;
 const ETHERSCAN_API_KEY = Constants.expoConfig?.extra?.ETHERSCAN_API_KEY;
+const BACKEND_URL =
+  // Prefer public env var if set
+  process.env.EXPO_PUBLIC_BACKEND_URL ||
+  // Or extra from app.config
+  (Constants.expoConfig?.extra as any)?.BACKEND_URL ||
+  // Fallback for local development (Expo web or emulator on same machine)
+  'http://localhost:4000';
 
 if (!INFURA_API_KEY) {
   console.warn(' INFURA_API_KEY not found. Please set it in .env');
@@ -76,6 +83,155 @@ interface WalletState {
 }
 
 const WalletContext = createContext<WalletState | undefined>(undefined);
+
+// ---- Helpers to sync with backend API (Prisma cache) ----
+
+function mapCachedTransactionToTransaction(cached: any): Transaction {
+  return {
+    hash: cached.txHash,
+    from: cached.fromAddress,
+    to: cached.toAddress ?? null,
+    value: cached.value,
+    timestamp: new Date(cached.timestamp).getTime(),
+    blockNumber:
+      typeof cached.blockNumber === 'number'
+        ? cached.blockNumber
+        : cached.blockNumber
+        ? Number(cached.blockNumber)
+        : 0,
+    status: cached.status,
+    direction: cached.direction,
+    gasUsed: cached.gasUsed ?? undefined,
+    gasPrice: cached.gasPrice ?? undefined,
+    // Not stored in cache – default to 0
+    nonce: 0,
+    contractAddress: cached.contractAddress ?? undefined,
+    tokenSymbol: cached.tokenSymbol ?? undefined,
+    tokenName: cached.tokenName ?? undefined,
+    tokenValue: cached.tokenValue ?? undefined,
+    isTokenTransfer: cached.isTokenTransfer ?? false,
+  };
+}
+
+async function loadTransactionsFromBackend(
+  address: string,
+  networkId: string = 'sepolia',
+): Promise<Transaction[] | null> {
+  if (!BACKEND_URL) return null;
+  try {
+    const url = `${BACKEND_URL}/api/transactions?address=${encodeURIComponent(
+      address,
+    )}&networkId=${encodeURIComponent(networkId)}&limit=50`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!Array.isArray(data)) return null;
+    return data.map(mapCachedTransactionToTransaction);
+  } catch (error) {
+    console.error('Failed to load cached transactions from backend:', error);
+    return null;
+  }
+}
+
+async function cacheTransactionsToBackend(
+  address: string,
+  txs: Transaction[],
+  networkId: string = 'sepolia',
+): Promise<void> {
+  if (!BACKEND_URL || txs.length === 0) return;
+  try {
+    await Promise.all(
+      txs.map((tx) =>
+        fetch(`${BACKEND_URL}/api/transactions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            txHash: tx.hash,
+            networkId,
+            accountAddress: address,
+            // Prisma accepts ISO strings for DateTime
+            timestamp: new Date(tx.timestamp).toISOString(),
+            fromAddress: tx.from,
+            toAddress: tx.to,
+            value: tx.value,
+            gasUsed: tx.gasUsed ?? null,
+            gasPrice: tx.gasPrice ?? null,
+            status: tx.status,
+            direction: tx.direction,
+            isTokenTransfer: tx.isTokenTransfer ?? false,
+            contractAddress: tx.contractAddress ?? null,
+            tokenSymbol: tx.tokenSymbol ?? null,
+            tokenName: tx.tokenName ?? null,
+            tokenValue: tx.tokenValue ?? null,
+          }),
+        }).catch(() => null),
+      ),
+    );
+  } catch (error) {
+    console.error('Failed to cache transactions to backend:', error);
+  }
+}
+
+function mapCachedTokenToTokenInfo(cached: any): TokenInfo {
+  return {
+    address: cached.contractAddress,
+    symbol: cached.symbol,
+    name: cached.name ?? '',
+    decimals: cached.decimals,
+    balance: cached.balance,
+    balanceFormatted: cached.balanceFormatted,
+  };
+}
+
+async function loadTokenBalancesFromBackend(
+  address: string,
+  networkId: string = 'sepolia',
+): Promise<TokenInfo[] | null> {
+  if (!BACKEND_URL) return null;
+  try {
+    const url = `${BACKEND_URL}/api/tokens?address=${encodeURIComponent(
+      address,
+    )}&networkId=${encodeURIComponent(networkId)}`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!Array.isArray(data)) return null;
+    return data.map(mapCachedTokenToTokenInfo);
+  } catch (error) {
+    console.error('Failed to load cached token balances from backend:', error);
+    return null;
+  }
+}
+
+async function cacheTokenBalancesToBackend(
+  address: string,
+  tokens: TokenInfo[],
+  networkId: string = 'sepolia',
+): Promise<void> {
+  if (!BACKEND_URL || tokens.length === 0) return;
+  try {
+    await Promise.all(
+      tokens.map((token) =>
+        fetch(`${BACKEND_URL}/api/tokens`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            accountAddress: address,
+            networkId,
+            contractAddress: token.address,
+            symbol: token.symbol,
+            name: token.name,
+            decimals: token.decimals,
+            balance: token.balance,
+            balanceFormatted: token.balanceFormatted,
+          }),
+        }).catch(() => null),
+      ),
+    );
+  } catch (error) {
+    console.error('Failed to cache token balances to backend:', error);
+  }
+}
 
 export const WalletProvider = ({ children }: { children: ReactNode }) => {
   const [wallet, setWallet] = useState<ethers.Wallet | null>(null);
@@ -223,38 +379,65 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
     if (!wallet || !wallet.provider || !address) return;
     setIsTransactionsLoading(true);
     try {
+      // 1) Try to load cached transactions from backend for fast initial UI
+      const cached = await loadTransactionsFromBackend(address, 'sepolia');
+      if (cached && cached.length > 0) {
+        setTransactions(cached);
+        console.log(`Loaded ${cached.length} cached transactions from backend`);
+      }
+
+      // 2) Always fetch fresh data from Etherscan / provider
       const txs = await fetchTransactionHistory(
         address,
         wallet.provider,
         ETHERSCAN_API_KEY,
         'sepolia',
-        50
+        50,
       );
       setTransactions(txs);
-      console.log(`Fetched ${txs.length} transactions`);
+      console.log(`Fetched ${txs.length} transactions from network`);
+
+      // 3) Cache the latest transactions in the backend (fire and forget)
+      cacheTransactionsToBackend(address, txs, 'sepolia').catch(() => {});
     } catch (err) {
       console.error('Failed to fetch transactions:', err);
-      setTransactions([]);
+      // Only clear if we had nothing cached
+      if (!transactions.length) {
+        setTransactions([]);
+      }
     } finally {
       setIsTransactionsLoading(false);
     }
-  }, [wallet, address, ETHERSCAN_API_KEY]);
+  }, [wallet, address, ETHERSCAN_API_KEY, transactions.length]);
 
   // Fetch token balances
   const fetchTokenBalances = useCallback(async () => {
     if (!wallet || !wallet.provider || !address) return;
     setIsTokensLoading(true);
     try {
+      // 1) Try to load cached token balances from backend
+      const cached = await loadTokenBalancesFromBackend(address, 'sepolia');
+      if (cached && cached.length > 0) {
+        setTokenBalances(cached);
+        console.log(`Loaded ${cached.length} cached token balances from backend`);
+      }
+
+      // 2) Fetch fresh balances from blockchain
       const tokens = await getPopularTokenBalances(address, wallet.provider);
       setTokenBalances(tokens);
-      console.log(`Fetched ${tokens.length} token balances`);
+      console.log(`Fetched ${tokens.length} token balances from network`);
+
+      // 3) Cache latest balances in backend
+      cacheTokenBalancesToBackend(address, tokens, 'sepolia').catch(() => {});
     } catch (err) {
       console.error('Failed to fetch token balances:', err);
-      setTokenBalances([]);
+      if (!tokenBalances.length) {
+        setTokenBalances([]);
+      }
     } finally {
       setIsTokensLoading(false);
     }
-  }, [wallet, address]);
+  }, [wallet, address, tokenBalances.length]);
 
   // Helper functions to get price data
   const getCryptoPrice = useCallback((symbol: string): CryptoPrice | null => {
