@@ -9,14 +9,14 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as SecureStore from 'expo-secure-store';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Modal,
-  ScrollView,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Modal,
+    ScrollView,
+    StyleSheet,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 
 const NETWORK_OPTIONS = ['sepolia', 'mainnet', 'other'];
@@ -56,14 +56,21 @@ export default function ContactsScreen() {
       try {
         const list = await getContacts(id);
         setContacts(list);
+        // Only show alert if backend is configured but failed
+        if (backendUrl && backendUrl !== 'http://localhost:4000' && list.length === 0 && __DEV__) {
+          console.log('No contacts found or backend unavailable');
+        }
       } catch (error) {
-        console.error('Failed to load contacts:', error);
-        Alert.alert('Error', 'Unable to load contacts from server.');
+        // Silently handle - backend is optional
+        if (__DEV__) {
+          console.log('Failed to load contacts:', error);
+        }
+        setContacts([]);
       } finally {
         setIsLoading(false);
       }
     },
-    [deviceId],
+    [deviceId, backendUrl],
   );
 
   useEffect(() => {
@@ -105,7 +112,12 @@ export default function ContactsScreen() {
         setShowModal(false);
         resetForm();
       } else {
-        Alert.alert('Error', 'Failed to save contact.');
+        // Only show error if backend is configured
+        if (backendUrl && backendUrl !== 'http://localhost:4000') {
+          Alert.alert('Error', 'Failed to save contact. Backend may be unavailable.');
+        } else {
+          Alert.alert('Backend Not Available', 'Contact saving requires backend. Please configure EXPO_PUBLIC_BACKEND_URL.');
+        }
       }
     } catch (error) {
       console.error('Failed to save contact:', error);

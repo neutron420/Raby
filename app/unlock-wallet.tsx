@@ -1,25 +1,25 @@
 // app/unlock-wallet.tsx
-import React, { useState, useEffect, useRef } from 'react';
-import {
-  StyleSheet,
-  View,
-  TextInput,
-  TouchableOpacity,
-  Alert,
-  ActivityIndicator,
-  Keyboard,
-  Pressable,
-} from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/theme';
-import * as SecureStore from 'expo-secure-store';
-import * as LocalAuthentication from 'expo-local-authentication';
-import * as Crypto from 'expo-crypto';
-import { ethers } from 'ethers';
 import { useWallet } from '@/context/wallet-context';
+import { Ionicons } from '@expo/vector-icons';
+import { ethers } from 'ethers';
+import * as Crypto from 'expo-crypto';
+import * as LocalAuthentication from 'expo-local-authentication';
+import { useRouter } from 'expo-router';
+import * as SecureStore from 'expo-secure-store';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Keyboard,
+  Pressable,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 
 // --- (Placeholder Decryption) ---
 async function decryptDataPlaceholder(
@@ -27,11 +27,9 @@ async function decryptDataPlaceholder(
   pinHash: string,
 ): Promise<string | null> {
   console.warn('Using placeholder decryption - Insecure!');
-  const storedPinHash = await SecureStore.getItemAsync('walletPinHash');
-  if (pinHash === storedPinHash) {
-    return await SecureStore.getItemAsync('walletMnemonic_dev_unsafe');
-  }
-  return null;
+  // No need to re-fetch pinHash - it's already validated
+  // encryptedData is the mnemonic in this placeholder implementation
+  return encryptedData;
 }
 // --- (End Placeholder) ---
 
@@ -121,11 +119,8 @@ export default function UnlockWalletScreen() {
         return;
       }
 
-      // Decrypt and unlock wallet
-      const decryptedMnemonic = await decryptDataPlaceholder(
-        encryptedMnemonic,
-        storedPinHash,
-      );
+      // Decrypt and unlock wallet (placeholder - just use the mnemonic directly)
+      const decryptedMnemonic = encryptedMnemonic;
 
       if (!decryptedMnemonic) {
         Alert.alert(
@@ -139,8 +134,13 @@ export default function UnlockWalletScreen() {
 
       // Create wallet and set in context - do this synchronously for speed
       const unlockedWallet = ethers.Wallet.fromMnemonic(decryptedMnemonic);
+      
+      // Set loading to false BEFORE setting wallet to allow immediate navigation
+      setIsLoading(false);
+      setPin('');
+      
+      // Set wallet and navigate immediately - data fetching happens in background
       setWallet(unlockedWallet);
-
       console.log('PIN Unlock Successful, wallet set in context');
       
       // Navigate immediately - no delay needed
@@ -150,6 +150,7 @@ export default function UnlockWalletScreen() {
       Alert.alert('Unlock Error', 'An error occurred during unlock.');
       setPin('');
       setIsLoading(false);
+      return;
     }
   };
 
@@ -195,8 +196,12 @@ export default function UnlockWalletScreen() {
 
       // Create wallet and set in context - do this synchronously for speed
       const unlockedWallet = ethers.Wallet.fromMnemonic(storedMnemonic);
+      
+      // Set loading to false BEFORE setting wallet to allow immediate navigation
+      setIsLoading(false);
+      
+      // Set wallet and navigate immediately - data fetching happens in background
       setWallet(unlockedWallet);
-
       console.log('Biometric Unlock Successful, wallet set in context');
       
       // Navigate immediately - no delay needed
@@ -205,6 +210,7 @@ export default function UnlockWalletScreen() {
       console.error('Error during biometric unlock:', error);
       Alert.alert('Biometric Error', 'An error occurred.');
       setIsLoading(false);
+      return;
     }
   };
 

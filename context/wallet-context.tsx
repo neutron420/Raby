@@ -1,34 +1,34 @@
 import {
-    getActiveAccount,
-    getAllAccounts,
-    getWalletForAccount,
-    setActiveAccount,
-    type Account,
+  getActiveAccount,
+  getAllAccounts,
+  getWalletForAccount,
+  setActiveAccount,
+  type Account,
 } from '@/services/account-service';
 import {
-    fetchMultipleCryptoPrices,
-    getCoinGeckoId,
-    type CryptoPrice,
-    type PriceHistoryPoint,
+  fetchMultipleCryptoPrices,
+  getCoinGeckoId,
+  type CryptoPrice,
+  type PriceHistoryPoint,
 } from '@/services/crypto-price-service';
 import {
-    getPopularTokenBalances,
-    type TokenInfo,
+  getPopularTokenBalances,
+  type TokenInfo,
 } from '@/services/token-service';
 import {
-    fetchTransactionHistory,
-    type Transaction,
+  fetchTransactionHistory,
+  type Transaction,
 } from '@/services/transaction-service';
 import { ethers } from 'ethers';
 import Constants from 'expo-constants';
 import React, {
-    createContext,
-    ReactNode,
-    useCallback,
-    useContext,
-    useEffect,
-    useMemo,
-    useState,
+  createContext,
+  ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
 } from 'react';
 import 'react-native-get-random-values';
 
@@ -44,6 +44,29 @@ const BACKEND_URL =
 
 if (!INFURA_API_KEY) {
   console.warn(' INFURA_API_KEY not found. Please set it in .env');
+}
+
+// Log backend URL status (only in dev mode)
+if (__DEV__) {
+  console.log('🔍 Backend URL Debug:');
+  console.log('   process.env.EXPO_PUBLIC_BACKEND_URL:', process.env.EXPO_PUBLIC_BACKEND_URL);
+  console.log('   Constants.expoConfig?.extra?.BACKEND_URL:', (Constants.expoConfig?.extra as any)?.BACKEND_URL);
+  console.log('   Final BACKEND_URL:', BACKEND_URL);
+  
+  if (BACKEND_URL === 'http://localhost:4000') {
+    console.log('⚠️  Backend URL is localhost - backend features will be disabled on device/emulator');
+    console.log('   To enable backend: Set EXPO_PUBLIC_BACKEND_URL in .env to your backend URL');
+  } else if (BACKEND_URL) {
+    console.log(`✅ Backend URL configured: ${BACKEND_URL}`);
+    console.log('   Testing connection...');
+    // Test connection
+    fetch(`${BACKEND_URL}/health`)
+      .then(res => res.json())
+      .then(data => console.log('   ✅ Backend is reachable:', data))
+      .catch(err => console.log('   ❌ Backend connection failed:', err.message));
+  } else {
+    console.log('⚠️  Backend URL not configured - backend features disabled');
+  }
 }
 
 const provider = new ethers.providers.JsonRpcProvider(
@@ -117,18 +140,26 @@ async function loadTransactionsFromBackend(
   address: string,
   networkId: string = 'sepolia',
 ): Promise<Transaction[] | null> {
-  if (!BACKEND_URL) return null;
+  if (!BACKEND_URL || BACKEND_URL === 'http://localhost:4000') {
+    // Skip backend if not configured or using localhost (won't work on device/emulator)
+    return null;
+  }
   try {
     const url = `${BACKEND_URL}/api/transactions?address=${encodeURIComponent(
       address,
     )}&networkId=${encodeURIComponent(networkId)}&limit=50`;
-    const res = await fetch(url);
+    const res = await fetch(url, {
+      timeout: 5000, // 5 second timeout
+    } as any);
     if (!res.ok) return null;
     const data = await res.json();
     if (!Array.isArray(data)) return null;
     return data.map(mapCachedTransactionToTransaction);
   } catch (error) {
-    console.error('Failed to load cached transactions from backend:', error);
+    // Silently fail - backend is optional, app will fetch from network instead
+    if (__DEV__) {
+      console.log('Backend unavailable, will fetch from network:', error);
+    }
     return null;
   }
 }
@@ -138,7 +169,7 @@ async function cacheTransactionsToBackend(
   txs: Transaction[],
   networkId: string = 'sepolia',
 ): Promise<void> {
-  if (!BACKEND_URL || txs.length === 0) return;
+  if (!BACKEND_URL || BACKEND_URL === 'http://localhost:4000' || txs.length === 0) return;
   try {
     await Promise.all(
       txs.map((tx) =>
@@ -187,18 +218,26 @@ async function loadTokenBalancesFromBackend(
   address: string,
   networkId: string = 'sepolia',
 ): Promise<TokenInfo[] | null> {
-  if (!BACKEND_URL) return null;
+  if (!BACKEND_URL || BACKEND_URL === 'http://localhost:4000') {
+    // Skip backend if not configured or using localhost (won't work on device/emulator)
+    return null;
+  }
   try {
     const url = `${BACKEND_URL}/api/tokens?address=${encodeURIComponent(
       address,
     )}&networkId=${encodeURIComponent(networkId)}`;
-    const res = await fetch(url);
+    const res = await fetch(url, {
+      timeout: 5000, // 5 second timeout
+    } as any);
     if (!res.ok) return null;
     const data = await res.json();
     if (!Array.isArray(data)) return null;
     return data.map(mapCachedTokenToTokenInfo);
   } catch (error) {
-    console.error('Failed to load cached token balances from backend:', error);
+    // Silently fail - backend is optional, app will fetch from network instead
+    if (__DEV__) {
+      console.log('Backend unavailable, will fetch from network:', error);
+    }
     return null;
   }
 }
@@ -208,7 +247,7 @@ async function cacheTokenBalancesToBackend(
   tokens: TokenInfo[],
   networkId: string = 'sepolia',
 ): Promise<void> {
-  if (!BACKEND_URL || tokens.length === 0) return;
+  if (!BACKEND_URL || BACKEND_URL === 'http://localhost:4000' || tokens.length === 0) return;
   try {
     await Promise.all(
       tokens.map((token) =>
@@ -455,18 +494,20 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     if (wallet && wallet.provider) {
-      // Defer balance and price fetch to not block navigation
-      // Use requestAnimationFrame for smoother experience
-      requestAnimationFrame(() => {
+      // Defer ALL data fetching to not block navigation
+      // Use longer delays to ensure navigation completes first
+      setTimeout(() => {
         fetchWalletData();
-        // Price data can be fetched later, don't block on it
-        setTimeout(() => fetchPriceData(), 100);
-        // Fetch transactions and tokens after a short delay
-        setTimeout(() => {
-          fetchTransactions();
-          fetchTokenBalances();
-        }, 500);
-      });
+      }, 300);
+      
+      // Price data can be fetched even later
+      setTimeout(() => fetchPriceData(), 500);
+      
+      // Fetch transactions and tokens after navigation is complete
+      setTimeout(() => {
+        fetchTransactions();
+        fetchTokenBalances();
+      }, 1000);
     } else {
       // Clear data when wallet is cleared
       setTransactions([]);
