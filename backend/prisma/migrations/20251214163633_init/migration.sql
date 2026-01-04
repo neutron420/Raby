@@ -15,64 +15,76 @@
   - The required column `id` was added to the `Contact` table with a prisma-level default value. This is not possible if the table is not empty. Please add this column as optional, then populate it before making it required.
 
 */
--- DropForeignKey
-ALTER TABLE "public"."Account" DROP CONSTRAINT "Account_networkId_fkey";
+-- DropForeignKey (only if tables exist)
+DO $$ 
+BEGIN
+    IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'Account') THEN
+        ALTER TABLE "public"."Account" DROP CONSTRAINT IF EXISTS "Account_networkId_fkey";
+        ALTER TABLE "public"."Account" DROP CONSTRAINT IF EXISTS "Account_walletId_fkey";
+    END IF;
+    
+    IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'Asset') THEN
+        ALTER TABLE "public"."Asset" DROP CONSTRAINT IF EXISTS "Asset_accountId_fkey";
+        ALTER TABLE "public"."Asset" DROP CONSTRAINT IF EXISTS "Asset_networkId_fkey";
+    END IF;
+    
+    IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'Contact') THEN
+        ALTER TABLE "public"."Contact" DROP CONSTRAINT IF EXISTS "Contact_userId_fkey";
+    END IF;
+    
+    IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'Transaction') THEN
+        ALTER TABLE "public"."Transaction" DROP CONSTRAINT IF EXISTS "Transaction_accountId_fkey";
+        ALTER TABLE "public"."Transaction" DROP CONSTRAINT IF EXISTS "Transaction_assetId_fkey";
+        ALTER TABLE "public"."Transaction" DROP CONSTRAINT IF EXISTS "Transaction_networkId_fkey";
+    END IF;
+    
+    IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'Wallet') THEN
+        ALTER TABLE "public"."Wallet" DROP CONSTRAINT IF EXISTS "Wallet_userId_fkey";
+    END IF;
+END $$;
 
--- DropForeignKey
-ALTER TABLE "public"."Account" DROP CONSTRAINT "Account_walletId_fkey";
+-- DropIndex (only if exists)
+DROP INDEX IF EXISTS "public"."Contact_userId_address_networkId_key";
+DROP INDEX IF EXISTS "public"."Contact_userId_idx";
 
--- DropForeignKey
-ALTER TABLE "public"."Asset" DROP CONSTRAINT "Asset_accountId_fkey";
+-- AlterTable (only if Contact table exists)
+DO $$ 
+BEGIN
+    IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'Contact') THEN
+        ALTER TABLE "Contact" DROP CONSTRAINT IF EXISTS "Contact_pkey";
+        ALTER TABLE "Contact" DROP COLUMN IF EXISTS "contactId";
+        ALTER TABLE "Contact" DROP COLUMN IF EXISTS "userId";
+        ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "deviceId" TEXT;
+        ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "id" TEXT;
+        -- Set default values for existing rows if needed
+        UPDATE "Contact" SET "id" = gen_random_uuid()::text WHERE "id" IS NULL;
+        UPDATE "Contact" SET "deviceId" = 'default' WHERE "deviceId" IS NULL;
+        ALTER TABLE "Contact" ALTER COLUMN "deviceId" SET NOT NULL;
+        ALTER TABLE "Contact" ALTER COLUMN "id" SET NOT NULL;
+        ALTER TABLE "Contact" ADD CONSTRAINT "Contact_pkey" PRIMARY KEY ("id");
+    ELSE
+        -- Create Contact table if it doesn't exist
+        CREATE TABLE IF NOT EXISTS "Contact" (
+            "id" TEXT NOT NULL,
+            "deviceId" TEXT NOT NULL,
+            "name" TEXT NOT NULL,
+            "address" TEXT NOT NULL,
+            "networkId" TEXT,
+            "notes" TEXT,
+            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "updatedAt" TIMESTAMP(3) NOT NULL,
+            CONSTRAINT "Contact_pkey" PRIMARY KEY ("id")
+        );
+    END IF;
+END $$;
 
--- DropForeignKey
-ALTER TABLE "public"."Asset" DROP CONSTRAINT "Asset_networkId_fkey";
-
--- DropForeignKey
-ALTER TABLE "public"."Contact" DROP CONSTRAINT "Contact_userId_fkey";
-
--- DropForeignKey
-ALTER TABLE "public"."Transaction" DROP CONSTRAINT "Transaction_accountId_fkey";
-
--- DropForeignKey
-ALTER TABLE "public"."Transaction" DROP CONSTRAINT "Transaction_assetId_fkey";
-
--- DropForeignKey
-ALTER TABLE "public"."Transaction" DROP CONSTRAINT "Transaction_networkId_fkey";
-
--- DropForeignKey
-ALTER TABLE "public"."Wallet" DROP CONSTRAINT "Wallet_userId_fkey";
-
--- DropIndex
-DROP INDEX "public"."Contact_userId_address_networkId_key";
-
--- DropIndex
-DROP INDEX "public"."Contact_userId_idx";
-
--- AlterTable
-ALTER TABLE "Contact" DROP CONSTRAINT "Contact_pkey",
-DROP COLUMN "contactId",
-DROP COLUMN "userId",
-ADD COLUMN     "deviceId" TEXT NOT NULL,
-ADD COLUMN     "id" TEXT NOT NULL,
-ADD CONSTRAINT "Contact_pkey" PRIMARY KEY ("id");
-
--- DropTable
-DROP TABLE "public"."Account";
-
--- DropTable
-DROP TABLE "public"."Asset";
-
--- DropTable
-DROP TABLE "public"."Network";
-
--- DropTable
-DROP TABLE "public"."Transaction";
-
--- DropTable
-DROP TABLE "public"."User";
-
--- DropTable
-DROP TABLE "public"."Wallet";
+-- DropTable (only if exists)
+DROP TABLE IF EXISTS "public"."Account";
+DROP TABLE IF EXISTS "public"."Asset";
+DROP TABLE IF EXISTS "public"."Network";
+DROP TABLE IF EXISTS "public"."Transaction";
+DROP TABLE IF EXISTS "public"."User";
+DROP TABLE IF EXISTS "public"."Wallet";
 
 -- CreateTable
 CREATE TABLE "TransactionCache" (
