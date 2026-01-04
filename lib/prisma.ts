@@ -211,7 +211,8 @@ export async function upsertContact(data: {
         deviceId_address_networkId: {
           deviceId: data.deviceId,
           address: data.address,
-          networkId: data.networkId || null,
+          // Prisma generated type incorrectly requires string, but schema allows null
+          networkId: (data.networkId ?? null) as any,
         },
       },
       update: data,
